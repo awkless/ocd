@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: CC0-1.0
+
+version = 1
+
+[[annotations]]
+path = ["Cargo.lock"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Jason Pena <jasonpena@awkless.com>"
+SPDX-License-Identifier = "CC0-1.0"
