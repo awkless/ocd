@@ -22,7 +22,11 @@
 
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
-use std::{collections::{HashMap, HashSet, VecDeque}, path::PathBuf, str};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    path::PathBuf,
+    str,
+};
 
 /// Structure of a cluster configuration.
 ///
@@ -31,7 +35,7 @@ use std::{collections::{HashMap, HashSet, VecDeque}, path::PathBuf, str};
 #[derive(Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct Cluster {
     /// Path to target directory to use as worktree alias for root.
-    pub worktree: Option<String>,
+    pub worktree: Option<PathBuf>,
 
     /// List of files to exclude from checkout of root.
     pub excludes: Option<Vec<String>>,
@@ -49,7 +53,7 @@ impl Cluster {
         DependencyIter {
             graph: &self.node,
             visited: HashSet::new(),
-            stack
+            stack,
         }
     }
 
@@ -99,6 +103,30 @@ impl Cluster {
                 .map(|(name, _)| name.clone())
                 .collect();
             return Err(anyhow!("Cluster contains cycle: {cycle:?}"));
+        }
+
+        Ok(())
+    }
+
+    pub fn expand_worktrees(&mut self) -> Result<()> {
+        if let Some(worktree) = &self.worktree {
+            self.worktree = Some(
+                shellexpand::full(worktree.to_string_lossy().as_ref())
+                    .with_context(|| "Failed to expand root worktree")?
+                    .into_owned()
+                    .into(),
+            );
+        }
+
+        for (_, node) in self.node.iter_mut() {
+            if let Some(worktree) = &self.worktree {
+                node.worktree = Some(
+                    shellexpand::full(worktree.to_string_lossy().as_ref())
+                        .with_context(|| "Failed to expand root worktree")?
+                        .into_owned()
+                        .into(),
+                );
+            }
         }
 
         Ok(())
@@ -172,29 +200,30 @@ mod tests {
     use super::*;
 
     use rstest::{fixture, rstest};
+    use sealed_test::prelude::*;
 
     #[fixture]
     fn cluster_config() -> String {
         r#"
-            worktree = "/home/user/ocd"
+            worktree = "$HOME/ocd"
             excludes = ["README*", "LICENSE*"]
 
             [node.sh]
             url = "git@example.org:~user/sh.git"
             bare_alias = true
-            worktree = "/home/user"
+            worktree = "$HOME"
             excludes = ["README*", "LICENSE*"]
 
             [node.shell_alias]
             url = "git@example.org:~user/shell_alias.git"
             bare_alias = true
-            worktree = "/home/user"
+            worktree = "$HOME"
             excludes = ["README*", "LICENSE*"]
 
             [node.bash]
             url = "git@example.org:~user/bash.git"
             bare_alias = true
-            worktree = "/home/user"
+            worktree = "$HOME"
             excludes = ["README*", "LICENSE*"]
             depends = ["sh", "shell_alias"]
 
@@ -226,21 +255,21 @@ mod tests {
             Node {
                 url: "git@example.org:~user/sh.git".into(),
                 bare_alias: true,
-                worktree: Some("/home/user".into()),
+                worktree: Some("$HOME".into()),
                 excludes: Some(vec!["README*".into(), "LICENSE*".into()]),
                 ..Default::default()
             },
             Node {
                 url: "git@example.org:~user/shell_alias.git".into(),
                 bare_alias: true,
-                worktree: Some("/home/user".into()),
+                worktree: Some("$HOME".into()),
                 excludes: Some(vec!["README*".into(), "LICENSE*".into()]),
                 ..Default::default()
             },
             Node {
                 url: "git@example.org:~user/bash.git".into(),
                 bare_alias: true,
-                worktree: Some("/home/user".into()),
+                worktree: Some("$HOME".into()),
                 excludes: Some(vec!["README*".into(), "LICENSE*".into()]),
                 depends: Some(vec!["sh".into(), "shell_alias".into()]),
             },
@@ -361,6 +390,20 @@ mod tests {
         let cluster: Cluster = input.parse()?;
         let result = cluster.cycle_check();
         assert!(result.is_ok());
+        Ok(())
+    }
+
+    #[rstest]
+    #[sealed_test(env = [("HOME", "/some/path")])]
+    fn cluster_expand_worktrees(cluster_config: String) -> Result<()> {
+        let mut cluster: Cluster = cluster_config.parse()?;
+        cluster.expand_worktrees()?;
+
+        assert_eq!(cluster.worktree, Some(PathBuf::from("/some/path/ocd")));
+        for (_, node) in cluster.node.iter() {
+            assert_eq!(node.worktree, Some(PathBuf::from("/some/path/ocd")));
+        }
+
         Ok(())
     }
 }
