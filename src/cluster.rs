@@ -20,7 +20,7 @@
 //! cluster. It is responsible for containing the configuration data that defines the cluster
 //! itself. A cluster can only have _one_ root repository.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use std::{collections::{HashMap, HashSet, VecDeque}, path::PathBuf, str};
 
@@ -51,6 +51,57 @@ impl Cluster {
             visited: HashSet::new(),
             stack
         }
+    }
+
+    /// Check for a cycle between node dependencies.
+    ///
+    /// # Errors
+    ///
+    /// Will return names of the nodes preventing dependencies from being
+    /// acyclic. List of names do not represent the full path of a cycle, nor
+    /// paths for any sub-cycles. The names just tell the user that one or more
+    /// cycles exist between them.
+    pub fn cycle_check(&self) -> Result<()> {
+        let mut in_degree: HashMap<String, usize> = HashMap::new();
+        let mut count: usize = 0;
+        let mut queue: VecDeque<String> = VecDeque::new();
+        let mut visited: HashSet<String> = HashSet::new();
+
+        for (name, node) in self.node.iter() {
+            in_degree.entry(name.clone()).or_insert(0);
+            for depend in node.depends.iter().flatten() {
+                *in_degree.entry(depend.clone()).or_insert(0) += 1;
+            }
+        }
+
+        for (name, degree) in in_degree.iter() {
+            if *degree == 0 {
+                queue.push_back(name.clone());
+            }
+        }
+
+        while let Some(current) = queue.pop_front() {
+            count += 1;
+            for depend in self.node[&current].depends.iter().flatten() {
+                *in_degree.get_mut(depend).unwrap() -= 1;
+                if *in_degree.get(depend).unwrap() == 0 {
+                    queue.push_back(depend.clone());
+                }
+            }
+            visited.insert(current);
+        }
+
+        if count != self.node.len() {
+            let cycle: Vec<String> = self
+                .node
+                .iter()
+                .filter(|(name, _)| !visited.contains(*name))
+                .map(|(name, _)| name.clone())
+                .collect();
+            return Err(anyhow!("Cluster contains cycle: {cycle:?}"));
+        }
+
+        Ok(())
     }
 }
 
@@ -212,6 +263,104 @@ mod tests {
         let cluster: Cluster = cluster_config.parse()?;
         let result: HashSet<&Node> = cluster.dependency_iter(node).collect();
         assert!(expect.iter().all(|node| result.contains(&node)));
+        Ok(())
+    }
+
+    #[rstest]
+    #[case(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+            depends = ["baz"]
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+            depends = ["foo"]
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+            depends = ["bar"]
+        "#
+    )]
+    #[case(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+            depends = ["foo"]
+        "#
+    )]
+    #[case(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+            depends = ["foo", "bar", "baz"]
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+        "#
+    )]
+    fn cluster_cycle_check_catches_cycles(#[case] input: &str) -> Result<()> {
+        let cluster: Cluster = input.parse()?;
+        let result = cluster.cycle_check();
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[rstest]
+    #[case(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+            depends = ["foo"]
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+            depends = ["bar"]
+        "#
+    )]
+    #[case(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+        "#
+    )]
+    #[case(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+            depends = ["bar", "baz"]
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+        "#
+    )]
+    fn cluster_cycle_check_accepts_acyclic_graph(#[case] input: &str) -> Result<()> {
+        let cluster: Cluster = input.parse()?;
+        let result = cluster.cycle_check();
+        assert!(result.is_ok());
         Ok(())
     }
 }
