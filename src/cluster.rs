@@ -20,8 +20,9 @@
 //! cluster. It is responsible for containing the configuration data that defines the cluster
 //! itself. A cluster can only have _one_ root repository.
 
-use std::{path::PathBuf, collections::HashMap};
+use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::{collections::HashMap, path::PathBuf, str};
 
 /// Structure of a cluster configuration.
 ///
@@ -37,6 +38,14 @@ pub struct Cluster {
 
     /// Set of repository entries in cluster.
     pub node: HashMap<String, Node>,
+}
+
+impl str::FromStr for Cluster {
+    type Err = anyhow::Error;
+
+    fn from_str(data: &str) -> Result<Self, Self::Err> {
+        toml::from_str::<Cluster>(data).with_context(|| "Failed to parse cluster")
+    }
 }
 
 /// Structure of repository entry in cluster.
@@ -65,3 +74,55 @@ pub struct Node {
     pub depends: Option<Vec<String>>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use rstest::{fixture, rstest};
+
+    #[fixture]
+    fn cluster_config() -> String {
+        r#"
+            worktree = "/home/user/ocd"
+            excludes = ["README*", "LICENSE*"]
+
+            [node.sh]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+            worktree = "/home/user"
+            excludes = ["README*", "LICENSE*"]
+
+            [node.shell_alias]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+            worktree = "/home/user"
+            excludes = ["README*", "LICENSE*"]
+
+            [node.bash]
+            url = "git@example.org:~user/bash.git"
+            bare_alias = true
+            worktree = "/home/user"
+            excludes = ["README*", "LICENSE*"]
+            depends = ["sh", "shell_alias"]
+
+            [node.dwm]
+            url = "git@example.org:~user/bash.git"
+            bare_alias = false
+        "#
+        .to_string()
+    }
+
+    #[rstest]
+    fn cluster_from_str_accept_str(cluster_config: String) -> Result<()> {
+        cluster_config.parse::<Cluster>()?;
+        Ok(())
+    }
+
+    #[rstest]
+    fn cluster_from_str_reject_str(
+        #[values("[fail # here", "not.gonna = [work]", "bad + snafu")] input: &str,
+    ) {
+        let cluster: Result<Cluster> = input.parse();
+        assert!(cluster.is_err());
+    }
+}
