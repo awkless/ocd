@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
+#![allow(dead_code)]
+
 mod cluster;
 
 use anyhow::Result;

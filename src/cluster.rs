@@ -22,13 +22,13 @@
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use std::{collections::HashMap, path::PathBuf, str};
+use std::{collections::{HashMap, HashSet, VecDeque}, path::PathBuf, str};
 
 /// Structure of a cluster configuration.
 ///
 /// The root (top-level) table of configuration is used to configure the root repository that houses
 /// this data.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct Cluster {
     /// Path to target directory to use as worktree alias for root.
     pub worktree: Option<String>,
@@ -38,6 +38,20 @@ pub struct Cluster {
 
     /// Set of repository entries in cluster.
     pub node: HashMap<String, Node>,
+}
+
+impl Cluster {
+    /// Iterate through dependencies of a node.
+    pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
+        let mut stack = VecDeque::new();
+        stack.push_front(node.into());
+
+        DependencyIter {
+            graph: &self.node,
+            visited: HashSet::new(),
+            stack
+        }
+    }
 }
 
 impl str::FromStr for Cluster {
@@ -56,7 +70,7 @@ impl str::FromStr for Cluster {
 /// # Invariant
 ///
 /// Nodes must be acircular.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize, PartialEq, Eq, Hash)]
 pub struct Node {
     /// URL to remote to clone from.
     pub url: String,
@@ -72,6 +86,34 @@ pub struct Node {
 
     /// List of other nodes in cluster as dependencies.
     pub depends: Option<Vec<String>>,
+}
+
+/// Iterate through dependencies of given node.
+///
+/// Assumes that set of nodes are acyclic.
+#[derive(Debug)]
+pub struct DependencyIter<'cluster> {
+    graph: &'cluster HashMap<String, Node>,
+    visited: HashSet<String>,
+    stack: VecDeque<String>,
+}
+
+impl<'cluster> Iterator for DependencyIter<'cluster> {
+    type Item = &'cluster Node;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(node) = self.stack.pop_front() {
+            let node = &self.graph[&node];
+            for depend in node.depends.iter().flatten() {
+                if !self.visited.contains(depend) {
+                    self.stack.push_front(depend.clone());
+                    self.visited.insert(depend.clone());
+                }
+            }
+            return Some(node);
+        }
+        None
+    }
 }
 
 #[cfg(test)]
@@ -93,7 +135,7 @@ mod tests {
             excludes = ["README*", "LICENSE*"]
 
             [node.shell_alias]
-            url = "git@example.org:~user/sh.git"
+            url = "git@example.org:~user/shell_alias.git"
             bare_alias = true
             worktree = "/home/user"
             excludes = ["README*", "LICENSE*"]
@@ -106,7 +148,7 @@ mod tests {
             depends = ["sh", "shell_alias"]
 
             [node.dwm]
-            url = "git@example.org:~user/bash.git"
+            url = "git@example.org:~user/dwm.git"
             bare_alias = false
         "#
         .to_string()
@@ -124,5 +166,52 @@ mod tests {
     ) {
         let cluster: Result<Cluster> = input.parse();
         assert!(cluster.is_err());
+    }
+
+    #[rstest]
+    #[case::deps(
+        "bash",
+        vec![
+            Node {
+                url: "git@example.org:~user/sh.git".into(),
+                bare_alias: true,
+                worktree: Some("/home/user".into()),
+                excludes: Some(vec!["README*".into(), "LICENSE*".into()]),
+                ..Default::default()
+            },
+            Node {
+                url: "git@example.org:~user/shell_alias.git".into(),
+                bare_alias: true,
+                worktree: Some("/home/user".into()),
+                excludes: Some(vec!["README*".into(), "LICENSE*".into()]),
+                ..Default::default()
+            },
+            Node {
+                url: "git@example.org:~user/bash.git".into(),
+                bare_alias: true,
+                worktree: Some("/home/user".into()),
+                excludes: Some(vec!["README*".into(), "LICENSE*".into()]),
+                depends: Some(vec!["sh".into(), "shell_alias".into()]),
+            },
+        ],
+    )]
+    #[case::no_deps(
+        "dwm",
+        vec![
+            Node {
+                url: "git@example.org:~user/dwm.git".into(),
+                ..Default::default()
+            }
+        ],
+    )]
+    fn cluster_dependency_iter_works(
+        cluster_config: String,
+        #[case] node: &str,
+        #[case] expect: Vec<Node>,
+    ) -> Result<()> {
+        let cluster: Cluster = cluster_config.parse()?;
+        let result: HashSet<&Node> = cluster.dependency_iter(node).collect();
+        assert!(expect.iter().all(|node| result.contains(&node)));
+        Ok(())
     }
 }
