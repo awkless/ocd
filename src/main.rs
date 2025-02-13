@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 mod cluster;
+mod vcs;
 
 use anyhow::Result;
 
