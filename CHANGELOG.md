@@ -5,6 +5,19 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.2.0] - 2025-02-12
+
+### Added
+
+- Add `cluster` module to handle cluster configurations.
+    - Add `Cluster` type to deserialize cluster configurations.
+    - Add `Node` type to deserialize repository entries in cluster.
+- Add `Cluster::from_str` to parse and deserialize strings to `Cluster`.
+- Add `Cluster::dependency_iter` to iterate through dependencies of a `Node`.
+- Add `Cluster::cycle_check` to ensure that `Node` dependencies are acyclic.
+- Add `Cluster::expand_worktree` to shellexpand worktree paths in `Node`s and
+  root of cluster.
+
 ## [0.1.0] - 2025-02-11
 
 ### Added
