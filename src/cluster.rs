@@ -50,6 +50,7 @@ impl Cluster {
         let mut stack = VecDeque::new();
         stack.push_front(node.into());
 
+        log::debug!("Iterate through dependencies of {}", stack.get(0).unwrap());
         DependencyIter {
             graph: &self.node,
             visited: HashSet::new(),
@@ -66,6 +67,7 @@ impl Cluster {
     /// paths for any sub-cycles. The names just tell the user that one or more
     /// cycles exist between them.
     pub fn cycle_check(&self) -> Result<()> {
+        log::info!("Circular dependency check");
         let mut in_degree: HashMap<String, usize> = HashMap::new();
         let mut count: usize = 0;
         let mut queue: VecDeque<String> = VecDeque::new();
@@ -104,11 +106,13 @@ impl Cluster {
                 .collect();
             return Err(anyhow!("Cluster contains cycle: {cycle:?}"));
         }
+        log::info!("No cycles found");
 
         Ok(())
     }
 
     pub fn expand_worktrees(&mut self) -> Result<()> {
+        log::info!("Expand worktree paths");
         if let Some(worktree) = &self.worktree {
             self.worktree = Some(
                 shellexpand::full(worktree.to_string_lossy().as_ref())
@@ -116,15 +120,25 @@ impl Cluster {
                     .into_owned()
                     .into(),
             );
+
+            log::debug!(
+                "Expand root worktree to {}",
+                self.worktree.as_ref().unwrap().display()
+            );
         }
 
-        for (_, node) in self.node.iter_mut() {
+        for (name, node) in self.node.iter_mut() {
             if let Some(worktree) = &self.worktree {
                 node.worktree = Some(
                     shellexpand::full(worktree.to_string_lossy().as_ref())
                         .with_context(|| "Failed to expand root worktree")?
                         .into_owned()
                         .into(),
+                );
+
+                log::debug!(
+                    "Expand node '{name}' worktree to {}",
+                    node.worktree.as_ref().unwrap().display()
                 );
             }
         }
@@ -137,6 +151,7 @@ impl str::FromStr for Cluster {
     type Err = anyhow::Error;
 
     fn from_str(data: &str) -> Result<Self, Self::Err> {
+        log::info!("Parse cluster data");
         toml::from_str::<Cluster>(data).with_context(|| "Failed to parse cluster")
     }
 }
@@ -182,6 +197,7 @@ impl<'cluster> Iterator for DependencyIter<'cluster> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(node) = self.stack.pop_front() {
+            log::debug!("Node dependency: {node}");
             let node = &self.graph[&node];
             for depend in node.depends.iter().flatten() {
                 if !self.visited.contains(depend) {
