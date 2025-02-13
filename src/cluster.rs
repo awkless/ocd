@@ -50,7 +50,7 @@ impl Cluster {
         let mut stack = VecDeque::new();
         stack.push_front(node.into());
 
-        log::debug!("Iterate through dependencies of {}", stack.get(0).unwrap());
+        log::debug!("Iterate through dependencies of {}", stack.front().unwrap());
         DependencyIter {
             graph: &self.node,
             visited: HashSet::new(),

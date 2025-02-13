@@ -8,21 +8,26 @@ packages:
   - gcc
   - cargo-deny
   - reuse
+secrets:
+  - a6b633f1-3564-4521-ab39-e280694186fb
 sources:
-  - https://git.sr.ht/~awkless/ocd
+  - https://git.sr.ht:~awkless/ocd
 tasks:
-  - setup: |-
+  - setup: |
       curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain stable -y
+      echo 'cd ocd' >> ~/.buildenv
+      git config --global credential.helper store
   - reuse_check: |
-      cd ocd
       reuse lint
   - code_check: |
-      cd ocd
       source $HOME/.cargo/env
       cargo test --all -- --nocapture
       cargo fmt --all --check
       cargo clippy --no-deps -- -Dwarnings
   - dependency_check: |
-      cd ocd
       source $HOME/.cargo/env
       cargo deny check
+  - github_mirror: |
+      set +x
+      github_token="$(cat ~/secrets/github_pat)"
+      git push --force --mirror "https://awkless:${github_token}@github.com/awkless/ocd"
