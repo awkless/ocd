@@ -5,7 +5,7 @@ mod cluster;
 mod vcs;
 
 use anyhow::Result;
-use git2::Repository;
+use git2::{Repository, RepositoryInitOptions};
 use std::path::Path;
 
 /// Git repository fixture.
@@ -18,16 +18,18 @@ pub(crate) struct RepoFixture {
 }
 
 impl RepoFixture {
-    pub fn init(path: impl AsRef<Path>, kind: RepoFixtureKind) -> Result<Self> {
-        let repo = match kind {
-            RepoFixtureKind::Normal => Self {
-                repo: Repository::init(path.as_ref())?,
-            },
-            RepoFixtureKind::Bare => Self {
-                repo: Repository::init_bare(path.as_ref())?,
-            },
+    pub fn init(path: impl AsRef<Path>, bare: bool) -> Result<Self> {
+        let mut opts = RepositoryInitOptions::new();
+        opts.bare(bare);
+        opts.initial_head("master");
+        opts.mkdir(true);
+        opts.mkpath(true);
+
+        let repo = Self {
+            repo: Repository::init_opts(path.as_ref(), &opts)?,
         };
         repo.init_config()?;
+
         Ok(repo)
     }
 
@@ -64,7 +66,6 @@ impl RepoFixture {
         let mut config = self.repo.config()?;
         config.set_str("user.name", "John Doe")?;
         config.set_str("user.email", "john@doe.com")?;
-        config.set_str("init.defaultBranch", "main")?;
         Ok(())
     }
 }

@@ -12,10 +12,10 @@ use sealed_test::prelude::*;
 use std::{ffi::OsString, path::Path};
 
 fn setup_repos() -> Result<()> {
-    let repo = RepoFixture::init("repos/foo", RepoFixtureKind::Normal)?;
+    let repo = RepoFixture::init("repos/foo", false)?;
     repo.write_blob_then_commit("hello.txt", "hello there")?;
 
-    let repo = RepoFixture::init("repos/bar", RepoFixtureKind::Bare)?;
+    let repo = RepoFixture::init("repos/bar", true)?;
     repo.write_blob_then_commit(".dotfile", "some.config = 123")?;
 
     Ok(())
@@ -35,13 +35,13 @@ fn test_git_init(#[case] path: impl AsRef<Path>, #[case] kind: RepoKind) -> Resu
 #[case::normal(
     "repos/foo",
     &RepoKind::Normal,
-    ["show", "main:hello.txt"],
+    ["show", "master:hello.txt"],
     Ok("Stdout: hello there".into()),
 )]
 #[case::bare_alias(
     "repos/bar",
     &RepoKind::BareAlias(AliasDir::new("./")),
-    ["show", "main:.dotfile"],
+    ["show", "master:.dotfile"],
     Ok("Stdout: some.config = 123".into()),
 )]
 #[case::invalid_repo_kind(
