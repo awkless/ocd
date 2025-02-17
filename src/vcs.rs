@@ -7,7 +7,7 @@
 //! system. Currently, Git is the main VCS tool targted by OCD for managing repository data.
 
 use anyhow::{anyhow, Context, Result};
-use git2::{build::RepoBuilder, Progress, RemoteCallbacks, FetchOptions, Repository};
+use git2::{build::RepoBuilder, FetchOptions, Progress, RemoteCallbacks, Repository};
 use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
@@ -34,15 +34,15 @@ pub fn git_clone(
     fo.remote_callbacks(rc);
 
     log::info!("Clone {}", url.as_ref());
-    RepoBuilder::new().bare(bare).fetch_options(fo).clone(url.as_ref(), path.as_ref())?;
+    RepoBuilder::new()
+        .bare(bare)
+        .fetch_options(fo)
+        .clone(url.as_ref(), path.as_ref())?;
 
     Ok(())
 }
 
-pub fn git_init(
-    path: impl AsRef<Path>,
-    kind: &RepoKind,
-) -> Result<()> {
+pub fn git_init(path: impl AsRef<Path>, kind: &RepoKind) -> Result<()> {
     log::info!("Initialize new repository at {}", path.as_ref().display());
     let repo = match kind {
         RepoKind::Normal => Repository::init(path.as_ref())?,

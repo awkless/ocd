@@ -7,8 +7,8 @@ use crate::vcs::*;
 
 use anyhow::{anyhow, Result};
 use pretty_assertions::assert_eq;
-use sealed_test::prelude::*;
 use rstest::rstest;
+use sealed_test::prelude::*;
 use std::{ffi::OsString, path::Path};
 
 fn setup_repos() -> Result<()> {

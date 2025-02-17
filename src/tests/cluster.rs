@@ -4,9 +4,9 @@
 use crate::cluster::*;
 
 use anyhow::{anyhow, Result};
-use std::{path::PathBuf, collections::HashSet};
 use rstest::{fixture, rstest};
 use sealed_test::prelude::*;
+use std::{collections::HashSet, path::PathBuf};
 
 #[fixture]
 fn config() -> String {
