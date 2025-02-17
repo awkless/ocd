@@ -7,12 +7,37 @@
 //! system. Currently, Git is the main VCS tool targted by OCD for managing repository data.
 
 use anyhow::{anyhow, Context, Result};
-use git2::Repository;
+use git2::{build::RepoBuilder, Progress, RemoteCallbacks, FetchOptions, Repository};
 use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::{Command, Output},
 };
+
+/// Perform Git clone.
+///
+/// Provides status information of the Git clone being done.
+///
+/// # Errors
+///
+/// Will fail if any step of the cloning process fails for whatever reason.
+pub fn git_clone(
+    path: impl AsRef<Path>,
+    url: impl AsRef<str>,
+    bare: bool,
+    cb: impl FnMut(Progress) -> bool,
+) -> Result<()> {
+    let mut rc = RemoteCallbacks::new();
+    rc.transfer_progress(cb);
+
+    let mut fo = FetchOptions::new();
+    fo.remote_callbacks(rc);
+
+    log::info!("Clone {}", url.as_ref());
+    RepoBuilder::new().bare(bare).fetch_options(fo).clone(url.as_ref(), path.as_ref())?;
+
+    Ok(())
+}
 
 pub fn git_init(
     path: impl AsRef<Path>,
