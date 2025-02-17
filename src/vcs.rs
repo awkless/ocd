@@ -91,7 +91,7 @@ pub fn syscall_git(
     bin_args.extend(path_args.into_iter().map(Into::into));
     bin_args.extend(args.into_iter().map(Into::into));
 
-    Ok(syscall("git", bin_args)?)
+    syscall("git", bin_args)
 }
 
 /// Determine kind of repository to use.
