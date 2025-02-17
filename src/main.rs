@@ -6,6 +6,9 @@
 mod cluster;
 mod vcs;
 
+#[cfg(test)]
+mod tests;
+
 use anyhow::Result;
 
 fn main() -> Result<()> {

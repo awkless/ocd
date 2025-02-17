@@ -84,7 +84,7 @@ impl AliasDir {
 /// Will fail if target binary does not exist, or binary itself fails due to invalid arguments or
 /// some other reason. If binary itself fails, then any output written to stdout and stderr will be
 /// included with error output.
-pub fn syscall(
+fn syscall(
     cmd: impl AsRef<OsStr>,
     args: impl IntoIterator<Item = impl AsRef<OsStr>>,
 ) -> Result<String> {
@@ -128,36 +128,4 @@ fn format_cmd_output(output: &Output) -> String {
         .unwrap_or(message);
 
     message
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use pretty_assertions::assert_eq;
-    use rstest::rstest;
-
-    #[rstest]
-    #[case("find", ["Cargo.lock"], "Stdout: Cargo.lock")]
-    #[case("git", ["ls-files", "README.md"], "Stdout: README.md")]
-    fn syscall_return_string(
-        #[case] cmd: impl AsRef<OsStr>,
-        #[case] args: impl IntoIterator<Item = impl AsRef<OsStr>>,
-        #[case] expect: impl AsRef<str>,
-    ) -> Result<()> {
-        let result = syscall(cmd, args)?;
-        assert_eq!(result, expect.as_ref());
-        Ok(())
-    }
-
-    #[rstest]
-    #[case("deadbeef", ["--cmd-non-existent"])]
-    #[case("git", ["--invalid-arg"])]
-    fn syscall_return_error(
-        #[case] cmd: impl AsRef<OsStr>,
-        #[case] args: impl IntoIterator<Item = impl AsRef<OsStr>>,
-    ) {
-        let result: Result<String> = syscall(cmd, args);
-        assert!(result.is_err());
-    }
 }
