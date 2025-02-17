@@ -4,6 +4,8 @@
 image: alpine/edge
 packages:
   - curl
+  - openssl-dev
+  - openssl-libs-static
   - cmake
   - gcc
   - cargo-deny
