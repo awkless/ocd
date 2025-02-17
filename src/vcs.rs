@@ -7,11 +7,31 @@
 //! system. Currently, Git is the main VCS tool targted by OCD for managing repository data.
 
 use anyhow::{anyhow, Context, Result};
+use git2::Repository;
 use std::{
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
     process::{Command, Output},
 };
+
+pub fn git_init(
+    path: impl AsRef<Path>,
+    kind: &RepoKind,
+) -> Result<()> {
+    log::info!("Initialize new repository at {}", path.as_ref().display());
+    let repo = match kind {
+        RepoKind::Normal => Repository::init(path.as_ref())?,
+        RepoKind::BareAlias(_) => Repository::init_bare(path.as_ref())?,
+    };
+
+    if matches!(kind, RepoKind::BareAlias(..)) {
+        let mut config = repo.config()?;
+        config.set_str("status.showUntrackedFiles", "no")?;
+        config.set_str("core.sparseCheckout", "true")?;
+    }
+
+    Ok(())
+}
 
 /// Run user's Git command.
 ///

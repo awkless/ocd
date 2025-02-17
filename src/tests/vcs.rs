@@ -3,7 +3,7 @@
 
 use super::{RepoFixture, RepoFixtureKind};
 
-use crate::vcs::{syscall_git, AliasDir, RepoKind};
+use crate::vcs::*;
 
 use anyhow::{anyhow, Result};
 use pretty_assertions::assert_eq;
@@ -18,6 +18,16 @@ fn setup_repos() -> Result<()> {
     let repo = RepoFixture::init("repos/bar", RepoFixtureKind::Bare)?;
     repo.write_blob_then_commit(".dotfile", "some.config = 123")?;
 
+    Ok(())
+}
+
+#[rstest]
+#[case::normal("repos/foo", RepoKind::Normal)]
+#[case::bare_alisa("repos/bar", RepoKind::BareAlias(AliasDir::new("./")))]
+#[sealed_test]
+fn test_git_init(#[case] path: impl AsRef<Path>, #[case] kind: RepoKind) -> Result<()> {
+    git_init(path.as_ref(), &kind)?;
+    assert!(path.as_ref().exists());
     Ok(())
 }
 
