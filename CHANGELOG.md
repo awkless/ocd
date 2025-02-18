@@ -5,6 +5,26 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.3.0] - 2025-02-17
+
+### Added
+
+- Add `vcs` module to handle Git repositories.
+    - Add `syscall_git` to make system calls to Git binary.
+    - Add `git_init` to initialize new Git repository.
+    - Add `git_clone` to clone Git repository.
+    - Add `RepoKind` to define how a target repository should be treated.
+        - Add `AliasDir`to define alias worktree to target directory.
+- Add `git2-rs` crate to make it easier to manipulate Git repositories.
+- Add `indicatif` crate to display visual progress bar when needed.
+- Add `inquire` crate to create fancy prompts for CLI.
+- Add `shellexpand` crate to perform shell expansion on data.
+- Add `run_script` crate to easily run the contents of a script in subshell.
+
+### Changed
+
+- Moved all internal tests into `tests` module.
+
 ## [0.2.0] - 2025-02-12
 
 ### Added
@@ -38,4 +58,6 @@ SPDX-License-Identifier: MIT
     - Add `deny.toml` to define accepted and banned licenses for dependencies.
     - Define `main` to begin putting code into.
 
+[0.3.0]: https://git.sr.ht/~awkless/ocd/refs/v0.3.0
+[0.2.0]: https://git.sr.ht/~awkless/ocd/refs/v0.2.0
 [0.1.0]: https://git.sr.ht/~awkless/ocd/refs/v0.1.0
