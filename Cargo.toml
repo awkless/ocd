@@ -26,6 +26,7 @@ log = "~0.4.25"
 run_script = "~0.11.0"
 serde = { version = "~1.0.127", features = ["derive"] }
 shellexpand = "~3.1.0"
+tokio = { version = "^1.0.0", features = ["full"] }
 toml = "~0.8.20"
 xdg = "~2.5.2"
 
