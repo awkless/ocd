@@ -871,6 +871,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "mkdirp"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "864e1de64c29b386d2dc7822aea156a7e4d45d4393ac748878dc21c9c41037f0"
+
+[[package]]
 name = "newline-converter"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -907,6 +913,7 @@ dependencies = [
  "indicatif",
  "inquire",
  "log",
+ "mkdirp",
  "pretty_assertions",
  "rstest",
  "run_script",
