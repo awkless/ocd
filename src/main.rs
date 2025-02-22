@@ -12,9 +12,12 @@ mod tests;
 use anyhow::Result;
 
 fn main() -> Result<()> {
-    let mut log = colog::default_builder();
-    log.filter(None, log::LevelFilter::Info);
-    log.init();
+    env_logger::Builder::new()
+        .format_target(false)
+        .format_timestamp(None)
+        .filter_level(log::LevelFilter::max())
+        .format_indent(Some(8))
+        .init();
 
     log::info!("Hello from ocd!");
 
