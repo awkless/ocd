@@ -10,8 +10,41 @@ mod vcs;
 mod tests;
 
 use anyhow::Result;
+use clap::{Args, Parser, Subcommand};
+use clap_verbosity_flag::{InfoLevel, Verbosity};
+use std::process;
 
-fn main() -> Result<()> {
+#[derive(Debug, Parser)]
+#[command(
+    about,
+    override_usage = "\n  ocd [options] <ocd-command>\n  ocd [options] <cluster_ref> <git-command>",
+    subcommand_help_heading = "Commands",
+    version
+)]
+pub struct Cli {
+    #[command(flatten)]
+    pub verbosity: Verbosity<InfoLevel>,
+
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    #[command(override_usage = "ocd clone [options] <url>")]
+    Clone(CloneOptions),
+}
+
+/// Clone existing cluster.
+#[derive(Args, Debug)]
+pub struct CloneOptions {
+    /// URL to remote repository to clone from.
+    #[arg(value_name = "url")]
+    pub url: String,
+}
+
+#[tokio::main]
+async fn main() {
     env_logger::Builder::new()
         .format_target(false)
         .format_timestamp(None)
@@ -19,7 +52,38 @@ fn main() -> Result<()> {
         .format_indent(Some(8))
         .init();
 
-    log::info!("Hello from ocd!");
+    let code = match run().await {
+        Ok(code) => code,
+        Err(error) => {
+            log::error!("{error:?}");
+            ExitCode::Failure
+        }
+    }
+    .into();
 
-    Ok(())
+    process::exit(code);
+}
+
+async fn run() -> Result<ExitCode> {
+    let cli = Cli::parse();
+    log::set_max_level(cli.verbosity.log_level_filter());
+
+    // TODO: Run command set here.
+
+    Ok(ExitCode::Success)
+}
+
+#[derive(Debug)]
+pub enum ExitCode {
+    Success,
+    Failure,
+}
+
+impl From<ExitCode> for i32 {
+    fn from(code: ExitCode) -> Self {
+        match code {
+            ExitCode::Success => 0,
+            ExitCode::Failure => 1,
+        }
+    }
 }
