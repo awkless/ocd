@@ -20,6 +20,11 @@
 //! cluster. It is responsible for containing the configuration data that defines the cluster
 //! itself. A cluster can only have _one_ root repository.
 
+use crate::{
+    config::ConfigLayout,
+    vcs::{AliasDir, RepoKind},
+};
+
 use anyhow::{anyhow, Context, Result};
 use serde::Deserialize;
 use std::{
@@ -32,7 +37,7 @@ use std::{
 ///
 /// The root (top-level) table of configuration is used to configure the root repository that houses
 /// this data.
-#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
 pub struct Cluster {
     /// Path to target directory to use as worktree alias for root.
     pub worktree: Option<PathBuf>,
@@ -164,7 +169,7 @@ impl str::FromStr for Cluster {
 /// # Invariant
 ///
 /// Nodes must be acircular.
-#[derive(Debug, Default, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq, Hash)]
 pub struct Node {
     /// URL to remote to clone from.
     pub url: String,
@@ -180,6 +185,22 @@ pub struct Node {
 
     /// List of other nodes in cluster as dependencies.
     pub depends: Option<Vec<String>>,
+}
+
+impl Node {
+    pub fn repo_kind(&self, layout: &ConfigLayout) -> RepoKind {
+        match self.bare_alias {
+            true => {
+                let path = self
+                    .worktree
+                    .as_ref()
+                    .map(|p| p.as_ref())
+                    .unwrap_or(layout.home_dir());
+                RepoKind::BareAlias(AliasDir::new(path))
+            }
+            false => RepoKind::Normal,
+        }
+    }
 }
 
 /// Iterate through dependencies of given node.
