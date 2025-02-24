@@ -1,27 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
-//! Cluster configuration.
-//!
-//! This modules provides basic API to handle the parsing and deserialization of cluster
-//! configurations.
-//!
-//! The OCD tool operates on a __cluster__. A _cluster_ is a collection of Git repositories that can
-//! be deployed together. The cluster is comprised of three repository types: __normal__,
-//! __bare-alias__, __root__.
-//!
-//! A _normal_ repository is just a regular Git repository whose gitdir and worktree point to the
-//! same path.
-//!
-//! A _bare-alias_ repository is a bare Git repository that uses a target directory as an alias of a
-//! worktree. That target directory can be treated like a Git repository without initilzation.
-//!
-//! A _root_ repository is a special bare-alias Git repository. It represents the root of the
-//! cluster. It is responsible for containing the configuration data that defines the cluster
-//! itself. A cluster can only have _one_ root repository.
-
 use crate::{
-    config::ConfigLayout,
+    config::Layout,
     vcs::{AliasDir, RepoKind},
 };
 
@@ -192,7 +173,7 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn repo_kind(&self, layout: &ConfigLayout) -> RepoKind {
+    pub fn repo_kind(&self, layout: &Layout) -> RepoKind {
         match self.bare_alias {
             true => {
                 let path = self
