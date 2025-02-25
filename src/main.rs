@@ -3,12 +3,13 @@
 
 #![allow(dead_code)]
 
-mod cluster;
+mod config;
 mod vcs;
 
-#[cfg(test)]
-mod tests;
-
+use crate::{
+    config::Layout,
+    vcs::{NodeMultiClone, RootRepo},
+};
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
@@ -38,9 +39,13 @@ pub enum Command {
 /// Clone existing cluster.
 #[derive(Args, Debug)]
 pub struct CloneOptions {
-    /// URL to remote repository to clone from.
+    /// URL to root repository to clone from.
     #[arg(value_name = "url")]
     pub url: String,
+
+    /// Number of threads to use per node clone.
+    #[arg(short, long, value_name = "limit")]
+    pub jobs: Option<usize>,
 }
 
 #[tokio::main]
@@ -68,7 +73,17 @@ async fn run() -> Result<ExitCode> {
     let cli = Cli::parse();
     log::set_max_level(cli.verbosity.log_level_filter());
 
-    // TODO: Run command set here.
+    let layout = Layout::new()?;
+    match cli.command {
+        Command::Clone(args) => {
+            let root = RootRepo::new_clone(args.url, &layout)?;
+            let cluster = root.get_cluster()?;
+            let repos = NodeMultiClone::new(&cluster, &layout);
+
+            repos.clone_all(args.jobs).await?;
+            root.deploy()?;
+        }
+    }
 
     Ok(ExitCode::Success)
 }
