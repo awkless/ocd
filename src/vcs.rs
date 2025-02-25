@@ -393,7 +393,7 @@ fn syscall_git(
     };
 
     let mut bin_args: Vec<OsString> = Vec::new();
-    bin_args.extend(path_args.into_iter().map(Into::into));
+    bin_args.extend(path_args);
     bin_args.extend(args.into_iter().map(Into::into));
 
     syscall("git", bin_args)
