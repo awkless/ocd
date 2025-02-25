@@ -16,8 +16,9 @@ use indicatif::{MultiProgress, ProgressBar, ProgressFinish, ProgressStyle};
 use std::{
     cell::RefCell,
     ffi::{OsStr, OsString},
+    fmt::Write as FmtWrite,
     fs::File,
-    io::Write,
+    io::Write as IoWrite,
     path::{Path, PathBuf},
     process::{Command, Output},
     sync::Arc,
@@ -354,7 +355,11 @@ impl SparseManip {
     }
 
     fn exclude_unwanted(&self) -> Result<()> {
-        let excludes: String = self.rules.iter().map(|u| format!("!{}\n", u)).collect();
+        let excludes: String = self.rules.iter().fold(String::new(), |mut acc, u| {
+            writeln!(&mut acc, "!{}", u).unwrap();
+            acc
+        });
+
         let mut file = File::create(&self.sparse_file)?;
         file.write_all(format!("/*\n{excludes}").as_bytes())?;
 
