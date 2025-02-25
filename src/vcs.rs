@@ -100,7 +100,7 @@ impl RootRepo {
     /// - Will fail if `cluster.toml` contains invalid formatting.
     pub fn get_cluster(&self) -> Result<Cluster> {
         self.git_bin(["cat-file", "-p", "@:cluster.toml"])?
-            .replace("Stdout:", "")
+            .replace("stdout:", "")
             .parse::<Cluster>()
     }
 
@@ -113,7 +113,7 @@ impl RootRepo {
         self.sparsity.exclude_unwanted()?;
         let output = self.git_bin(["checkout"])?;
         if !output.is_empty() {
-            log::info!("{output}");
+            log::info!("deploy root: {output}");
         }
 
         Ok(())
@@ -429,11 +429,11 @@ fn format_cmd_output(output: &Output) -> String {
     let mut message = String::new();
 
     if !stdout.is_empty() {
-        message.push_str(format!("Stdout: {stdout}").as_str());
+        message.push_str(format!("stdout: {stdout}").as_str());
     }
 
     if !stderr.is_empty() {
-        message.push_str(format!("Stderr: {stderr}").as_str());
+        message.push_str(format!("stderr: {stderr}").as_str());
     }
 
     let message = message
