@@ -35,7 +35,7 @@
 //!
 //! See the [`Cluster`] type for what a cluster definition looks like.
 
-mod cluster;
+pub(crate) mod cluster;
 
 #[doc(inline)]
 pub use cluster::*;

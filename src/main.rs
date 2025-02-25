@@ -6,6 +6,9 @@
 mod config;
 mod vcs;
 
+#[cfg(test)]
+mod tests;
+
 use crate::{
     config::Layout,
     vcs::{NodeMultiClone, RootRepo},
