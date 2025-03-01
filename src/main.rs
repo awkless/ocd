@@ -4,19 +4,20 @@
 #![allow(dead_code)]
 
 mod config;
-mod vcs;
+mod repo;
 
 #[cfg(test)]
 mod tests;
 
 use crate::{
     config::Layout,
-    vcs::{NodeMultiClone, RootRepo},
+    repo::{MultiClone, RootRepo},
 };
+
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use std::process;
+use std::{fs::remove_dir_all, process};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -79,12 +80,20 @@ async fn run() -> Result<ExitCode> {
     let layout = Layout::new()?;
     match cli.command {
         Command::Clone(args) => {
-            let root = RootRepo::new_clone(args.url, &layout)?;
-            let cluster = root.get_cluster()?;
-            let repos = NodeMultiClone::new(&cluster, &layout);
+            let root = match RootRepo::new_clone(args.url, &layout) {
+                Ok(root) => root,
+                Err(err) => {
+                    remove_dir_all(layout.config_dir())?;
+                    remove_dir_all(layout.data_dir())?;
+                    return Err(err);
+                }
+            };
 
-            repos.clone_all(args.jobs).await?;
+            let cluster = root.get_cluster()?;
+            let multi_clone = MultiClone::new(&cluster, &layout);
+
             root.deploy()?;
+            multi_clone.clone_all(args.jobs).await?;
         }
     }
 

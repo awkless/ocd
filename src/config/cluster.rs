@@ -3,7 +3,7 @@
 
 use crate::{
     config::Layout,
-    vcs::{AliasDir, RepoKind},
+    repo::{AliasDir, RepoKind},
 };
 
 use anyhow::{anyhow, Context, Result};
