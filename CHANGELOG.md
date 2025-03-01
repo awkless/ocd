@@ -5,6 +5,46 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.4.0] - 2025-02-28
+
+### Added
+
+- Add OCD clone command.
+  - OCD clone command will clone root repository, extract node information from
+    `cluster.toml` file, and clone all nodes from that information in cluster.
+- Add `RootRepo` to manipulate root repository of cluster.
+  - Add `RootRepo::new_clone` to clone new root repository by URL.
+  - Add `RootRepo::get_cluster` to extract cluster definition inside root
+    repository.
+  - Add `RootRepo::nuke` to nuke existing root repository along with cluster
+    itself.
+  - Add `RootRepo::deploy` to deploy root repository to target worktree alias,
+    excluding any files listed in the `Cluster::excludes` field.
+- Add `MultiClone` to provide interactive cloning of multiple node repositories
+  in cluster definition.
+  - Add `MultiClone::new` to construct new `MultiClone` type by cluster
+    definition.
+  - Add `MultiClone::clone_all` to clone all node repositories in cluster.
+- Add `SparseManip` type to make it easier to manipulate sparse checkout.
+- Add `Git2AuthPrompt` to prompt user for credentials for any `git2` crate
+  routines that need it.
+- Add `GitWrapper` type to handle any and all Git command and repository
+  manipulation.
+
+### Changed
+
+- Rename `vcs` module to `repo` module.
+   - Improve Git manipulation logic through `GitWrapper` type.
+
+### Removed
+
+- Remove `syscall_git` function.
+  - Now handled by `GitWrapper`.
+- Remove `git_init`.
+  - Will eventually be implemented in `GitWrapper`.
+- Remove `git_clone`.
+  - Now handled by `GitWrapper`.
+
 ## [0.3.0] - 2025-02-17
 
 ### Added
@@ -58,6 +98,7 @@ SPDX-License-Identifier: MIT
     - Add `deny.toml` to define accepted and banned licenses for dependencies.
     - Define `main` to begin putting code into.
 
+[0.4.0]: https://git.sr.ht/~awkless/ocd/refs/v0.4.0
 [0.3.0]: https://git.sr.ht/~awkless/ocd/refs/v0.3.0
 [0.2.0]: https://git.sr.ht/~awkless/ocd/refs/v0.2.0
 [0.1.0]: https://git.sr.ht/~awkless/ocd/refs/v0.1.0
