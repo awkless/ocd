@@ -10,8 +10,8 @@ mod repo;
 mod tests;
 
 use crate::{
-    config::Layout,
-    repo::{MultiClone, RootRepo},
+    config::{Cluster, read_config, Node, Layout},
+    repo::{MultiClone, RootRepo, NodeRepo},
 };
 
 use anyhow::Result;
@@ -38,6 +38,9 @@ pub struct Cli {
 pub enum Command {
     #[command(override_usage = "ocd clone [options] <url>")]
     Clone(CloneOptions),
+
+    #[command(override_usage = "ocd deploy [options] [node_names]...")]
+    Deploy(DeployOptions),
 }
 
 /// Clone existing cluster.
@@ -50,6 +53,12 @@ pub struct CloneOptions {
     /// Number of threads to use per node clone.
     #[arg(short, long, value_name = "limit")]
     pub jobs: Option<usize>,
+}
+
+#[derive(Args, Debug)]
+pub struct DeployOptions {
+    #[arg(value_parser, num_args = 1.., value_delimiter = ',')]
+    node_names: Vec<String>,
 }
 
 #[tokio::main]
@@ -94,6 +103,16 @@ async fn run() -> Result<ExitCode> {
 
             root.deploy()?;
             multi_clone.clone_all(args.jobs).await?;
+        }
+        Command::Deploy(args) => {
+            let cluster: Cluster = read_config("cluster.toml", &layout)?;
+            for node_name in args.node_names {
+                for (name, node) in cluster.dependency_iter(node_name) {
+                    // TODO: Handle case where user wants to deploy root.
+                    let repo = NodeRepo::from_node(name, node, &layout);
+                    repo.deploy()?;
+                }
+            }
         }
     }
 
