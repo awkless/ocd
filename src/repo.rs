@@ -13,7 +13,7 @@ use auth_git2::{GitAuthenticator, Prompter};
 use beau_collector::BeauCollector as _;
 use futures::{stream, StreamExt};
 use git2::{build::RepoBuilder, FetchOptions, RemoteCallbacks};
-use indicatif::{MultiProgress, ProgressBar, ProgressFinish, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::{
     ffi::{OsStr, OsString},
     fmt::Write as FmtWrite,
@@ -31,15 +31,7 @@ pub struct RootRepo {
 
 impl RootRepo {
     pub fn new_clone(url: impl AsRef<str>, layout: &Layout) -> Result<Self> {
-        let style = ProgressStyle::with_template(
-            "{wide_msg} {bytes:>10} /{total_bytes:>10}  {bytes_per_sec:>10.magenta}  {elapsed_precise:.green}  [{bar:<50.yellow/blue}]",
-        ).unwrap()
-        .progress_chars("-Cco.");
-        let bar = ProgressBar::no_length()
-            .with_message(url.as_ref().to_string())
-            .with_style(style);
-        bar.enable_steady_tick(Duration::from_millis(100));
-
+        let bar = ProgressBar::no_length();
         let git = GitWrapper::new("root", layout)
             .with_url(url.as_ref())
             .with_kind(RepoKind::Bare)
@@ -81,6 +73,21 @@ impl RootRepo {
     }
 }
 
+pub struct NodeRepo {
+    git: GitWrapper,
+}
+
+impl NodeRepo {
+    pub fn from_node(repo_name: &str, node: &Node, layout: &Layout) -> Self {
+        let git = GitWrapper::from_node(repo_name, node, layout);
+        Self { git }
+    }
+
+    pub fn deploy(&self) -> Result<()> {
+        self.git.deploy()
+    }
+}
+
 pub struct MultiClone {
     repos: Vec<GitWrapper>,
     multi_bar: MultiProgress,
@@ -106,17 +113,7 @@ impl MultiClone {
 
         stream::iter(self.repos)
             .for_each_concurrent(jobs, |repo| {
-                let style = ProgressStyle::with_template(
-                    "{wide_msg} {bytes:>10} /{total_bytes:>10}  {bytes_per_sec:>10.magenta}  {elapsed_precise:.green}  [{bar:<50.yellow/blue}]",
-                ).unwrap()
-                .progress_chars("-Cco.");
-                let bar = self.multi_bar.add(
-                    ProgressBar::no_length()
-                        .with_message(repo.url.clone())
-                        .with_finish(ProgressFinish::AndLeave)
-                        .with_style(style),
-                );
-                bar.enable_steady_tick(Duration::from_millis(100));
+                let bar = self.multi_bar.add(ProgressBar::no_length());
 
                 bars.push(bar.clone());
                 let results = results.clone();
@@ -184,13 +181,27 @@ impl GitWrapper {
         self
     }
 
+    pub fn with_excludes(mut self, unwanted: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.sparsity.add_unwanted(unwanted);
+        self
+    }
+
     pub fn from_node(repo_name: &str, node: &Node, layout: &Layout) -> Self {
         Self::new(repo_name, layout)
             .with_url(&node.url)
             .with_kind(node.repo_kind(layout))
+            .with_excludes(node.excludes.iter().flatten())
     }
 
     pub fn clone_with_progress(&self, bar: &ProgressBar) -> Result<()> {
+        let style = ProgressStyle::with_template(
+            "{wide_msg} {bytes:>10} /{total_bytes:>10}  {bytes_per_sec:>10.magenta}  {elapsed_precise:.green}  [{bar:<50.yellow/blue}]",
+        ).unwrap()
+        .progress_chars("-Cco.");
+        bar.set_style(style);
+        bar.set_message(self.url.clone());
+        bar.enable_steady_tick(Duration::from_millis(100));
+
         let mut throttle = Instant::now();
         let config = git2::Config::open_default()?;
         let mut rc = RemoteCallbacks::new();
@@ -226,10 +237,17 @@ impl GitWrapper {
     }
 
     pub fn deploy(&self) -> Result<()> {
+        if !self.path.exists() {
+            log::warn!("Must clone {} before deployment", &self.url);
+            let bar = ProgressBar::no_length();
+            self.clone_with_progress(&bar)?;
+            bar.finish_and_clear();
+        }
+
         self.sparsity.exclude_unwanted()?;
         let output = self.syscall(["checkout"])?;
         if !output.is_empty() {
-            log::info!("deploy root: {output}");
+            log::info!("deploy {}: {output}", self.path.display());
         }
 
         Ok(())
