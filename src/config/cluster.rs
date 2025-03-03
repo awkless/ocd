@@ -199,19 +199,19 @@ pub struct DependencyIter<'cluster> {
 }
 
 impl<'cluster> Iterator for DependencyIter<'cluster> {
-    type Item = &'cluster Node;
+    type Item = (&'cluster str, &'cluster Node);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(node) = self.stack.pop_front() {
             log::debug!("Node dependency: {node}");
-            let node = &self.graph[&node];
+            let (name, node) = self.graph.get_key_value(&node).unwrap();
             for depend in node.depends.iter().flatten() {
                 if !self.visited.contains(depend) {
                     self.stack.push_front(depend.clone());
                     self.visited.insert(depend.clone());
                 }
             }
-            return Some(node);
+            return Some((name.as_ref(), node));
         }
         None
     }
