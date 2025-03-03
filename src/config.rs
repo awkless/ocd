@@ -42,7 +42,27 @@ pub use cluster::*;
 
 use anyhow::{anyhow, Result};
 use mkdirp::mkdirp;
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, io::Read};
+
+pub fn read_config<P, C>(path: P, layout: &Layout) -> Result<C>
+where
+    P: AsRef<Path>,
+    C: std::str::FromStr<Err = anyhow::Error>,
+{
+    let full_path = layout.config_dir().join(path.as_ref());
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(false)
+        .read(true)
+        .create(true)
+        .open(full_path)?;
+
+    let mut buffer = String::new();
+    file.read_to_string(&mut buffer)?;
+
+    let config: C = buffer.parse()?;
+    Ok(config)
+}
 
 /// Configuration layout handler.
 ///
