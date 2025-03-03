@@ -1,7 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
-use crate::config::{Cluster, Layout, Node};
+mod auth;
+
+use crate::{
+    repo::auth::{ProgressBarKind, ProgressBarAuth},
+    config::{Cluster, Layout, Node}
+};
 
 use anyhow::{anyhow, Context, Result};
 use auth_git2::{GitAuthenticator, Prompter};
@@ -9,7 +14,6 @@ use beau_collector::BeauCollector as _;
 use futures::{stream, StreamExt};
 use git2::{build::RepoBuilder, FetchOptions, RemoteCallbacks};
 use indicatif::{MultiProgress, ProgressBar, ProgressFinish, ProgressStyle};
-use inquire::{Password, Text};
 use std::{
     ffi::{OsStr, OsString},
     fmt::Write as FmtWrite,
@@ -38,7 +42,8 @@ impl RootRepo {
 
         let git = GitWrapper::new("root", layout)
             .with_url(url.as_ref())
-            .with_kind(RepoKind::Bare);
+            .with_kind(RepoKind::Bare)
+            .with_auth_prompt(ProgressBarAuth::new(ProgressBarKind::SingleBar(bar.clone())));
         git.clone_with_progress(&bar)?;
         bar.finish_and_clear();
 
@@ -66,10 +71,12 @@ impl RootRepo {
         self.git.deploy()
     }
 
-    pub fn nuke(&self, layout: &Layout) -> Result<()> {
+    pub fn nuke_cluster(&self, layout: &Layout) -> Result<()> {
         log::info!("Clear out cluster");
-        remove_dir_all(layout.config_dir())?;
+        self.git.sparsity.exclude_all()?;
+
         remove_dir_all(layout.data_dir())?;
+
         Ok(())
     }
 }
@@ -87,7 +94,7 @@ impl MultiClone {
             .iter()
             .map(|(name, node)| {
                 GitWrapper::from_node(name, node, layout)
-                    .with_auth_prompt(Git2AuthPrompt::new(multi_bar.clone()))
+                    .with_auth_prompt(ProgressBarAuth::new(ProgressBarKind::MultiBar(multi_bar.clone())))
             })
             .collect();
         Self { repos, multi_bar }
@@ -255,66 +262,6 @@ impl GitWrapper {
     }
 }
 
-#[derive(Clone)]
-struct Git2AuthPrompt {
-    multi_bar: MultiProgress,
-}
-
-impl Git2AuthPrompt {
-    pub fn new(multi_bar: MultiProgress) -> Self {
-        Self { multi_bar }
-    }
-}
-
-impl Prompter for Git2AuthPrompt {
-    fn prompt_username_password(
-        &mut self,
-        url: &str,
-        _git_config: &git2::Config,
-    ) -> Option<(String, String)> {
-        self.multi_bar.suspend(|| {
-            log::info!("Authentication required for {url}");
-            let username = Text::new("username").prompt().unwrap();
-            let password = Password::new("password")
-                .without_confirmation()
-                .prompt()
-                .unwrap();
-            Some((username, password))
-        })
-    }
-
-    fn prompt_password(
-        &mut self,
-        username: &str,
-        url: &str,
-        _git_config: &git2::Config,
-    ) -> Option<String> {
-        self.multi_bar.suspend(|| {
-            log::info!("Authentication required for {url} for user {username}");
-            let password = Password::new("password")
-                .without_confirmation()
-                .prompt()
-                .unwrap();
-            Some(password)
-        })
-    }
-
-    fn prompt_ssh_key_passphrase(
-        &mut self,
-        private_key_path: &Path,
-        _git_config: &git2::Config,
-    ) -> Option<String> {
-        self.multi_bar.suspend(|| {
-            log::info!("Authentication required for {}", private_key_path.display());
-            let password = Password::new("password")
-                .without_confirmation()
-                .prompt()
-                .unwrap();
-            Some(password)
-        })
-    }
-}
-
 #[derive(Debug, Default, Clone)]
 struct SparseManip {
     sparse_path: PathBuf,
@@ -348,6 +295,12 @@ impl SparseManip {
         let mut file = File::create(&self.sparse_path)?;
         file.write_all(format!("/*\n{excludes}").as_bytes())?;
 
+        Ok(())
+    }
+
+    fn exclude_all(&self) -> Result<()> {
+        let mut file = File::create(&self.sparse_path)?;
+        file.write_all("".as_bytes())?;
         Ok(())
     }
 }
