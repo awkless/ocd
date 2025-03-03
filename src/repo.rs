@@ -216,9 +216,11 @@ impl GitWrapper {
             .fetch_options(fo)
             .clone(self.url.as_ref(), self.path.as_ref())?;
 
-        let mut config = repo.config()?;
-        config.set_str("status.showUntrackedFiles", "no")?;
-        config.set_str("core.sparseCheckout", "true")?;
+        if matches!(self.kind, RepoKind::BareAlias(..) | RepoKind::Bare) {
+            let mut config = repo.config()?;
+            config.set_str("status.showUntrackedFiles", "no")?;
+            config.set_str("core.sparseCheckout", "true")?;
+        }
 
         Ok(())
     }
@@ -324,6 +326,13 @@ impl RepoKind {
         match self {
             RepoKind::Normal => false,
             RepoKind::Bare | RepoKind::BareAlias(_) => true,
+        }
+    }
+
+    pub (crate) fn unwrap_alias_worktree(&self) -> Option<&Path> {
+        match self {
+            RepoKind::Normal | RepoKind::Bare => None,
+            RepoKind::BareAlias(alias) => Some(alias.0.as_ref()),
         }
     }
 }
