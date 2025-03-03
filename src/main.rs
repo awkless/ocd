@@ -17,12 +17,12 @@ use crate::{
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use std::{fs::remove_dir_all, process};
+use std::{fs::remove_dir_all, process, ffi::OsString};
 
 #[derive(Debug, Parser)]
 #[command(
     about,
-    override_usage = "\n  ocd [options] <ocd-command>\n  ocd [options] <cluster_ref> <git-command>",
+    override_usage = "\n  ocd [options] <ocd-command>\n  ocd [options] [node_names]... <git-command>",
     subcommand_help_heading = "Commands",
     version
 )]
@@ -41,6 +41,9 @@ pub enum Command {
 
     #[command(override_usage = "ocd deploy [options] [node_names]...")]
     Deploy(DeployOptions),
+
+    #[command(external_subcommand)]
+    Git(Vec<OsString>),
 }
 
 /// Clone existing cluster.
@@ -111,6 +114,20 @@ async fn run() -> Result<ExitCode> {
                     // TODO: Handle case where user wants to deploy root.
                     let repo = NodeRepo::from_node(name, node, &layout);
                     repo.deploy()?;
+                }
+            }
+        }
+        Command::Git(args) => {
+            let cluster: Cluster = read_config("cluster.toml", &layout)?;
+            let node_names = args[0].to_string_lossy().into_owned();
+            let node_names: Vec<&str> = node_names.split(',').collect();
+            for node_name in node_names {
+                if node_name == "root" {
+                    let root = RootRepo::from_cluster(&cluster, &layout);
+                    root.git_bin(args[1..].to_vec())?;
+                } else {
+                    let node = NodeRepo::from_node(node_name, &cluster.node[node_name], &layout);
+                    node.git_bin(args[1..].to_vec())?;
                 }
             }
         }

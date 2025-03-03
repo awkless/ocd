@@ -52,6 +52,18 @@ impl RootRepo {
         Ok(root)
     }
 
+    pub fn from_cluster(cluster: &Cluster, layout: &Layout) -> Self {
+        let worktree = cluster
+            .worktree
+            .as_ref()
+            .map(|p| p.as_ref())
+            .unwrap_or(layout.config_dir());
+        let git = GitWrapper::new("root", layout)
+            .with_kind(RepoKind::BareAlias(AliasDir::new(worktree)))
+            .with_excludes(cluster.excludes.iter().flatten());
+        Self { git }
+    }
+
     pub fn get_cluster(&self) -> Result<Cluster> {
         self.git
             .syscall(["cat-file", "-p", "@:cluster.toml"])?
@@ -71,6 +83,15 @@ impl RootRepo {
 
         Ok(())
     }
+
+    pub fn git_bin(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
+        let output = self.git.syscall(args)?;
+        if !output.is_empty() {
+            log::info!("{}\n{output}", self.git.path.display());
+        }
+
+        Ok(())
+    }
 }
 
 pub struct NodeRepo {
@@ -85,6 +106,15 @@ impl NodeRepo {
 
     pub fn deploy(&self) -> Result<()> {
         self.git.deploy()
+    }
+
+    pub fn git_bin(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
+        let output = self.git.syscall(args)?;
+        if !output.is_empty() {
+            log::info!("{}\n{output}", self.git.path.display());
+        }
+
+        Ok(())
     }
 }
 
@@ -247,7 +277,7 @@ impl GitWrapper {
         self.sparsity.exclude_unwanted()?;
         let output = self.syscall(["checkout"])?;
         if !output.is_empty() {
-            log::info!("deploy {}: {output}", self.path.display());
+            log::info!("deploy {}:\n{output}", self.path.display());
         }
 
         Ok(())
