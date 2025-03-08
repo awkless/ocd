@@ -10,14 +10,14 @@ mod repo;
 mod tests;
 
 use crate::{
-    config::{Cluster, read_config, Node, Layout},
-    repo::{MultiClone, RootRepo, NodeRepo},
+    config::{read_config, Cluster, Layout, Node},
+    repo::{MultiClone, NodeRepo, RootRepo},
 };
 
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use std::{fs::remove_dir_all, process, ffi::OsString};
+use std::{ffi::OsString, fs::remove_dir_all, process};
 
 #[derive(Debug, Parser)]
 #[command(

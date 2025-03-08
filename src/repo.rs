@@ -4,8 +4,8 @@
 mod auth;
 
 use crate::{
-    repo::auth::{ProgressBarKind, ProgressBarAuth},
-    config::{Cluster, Layout, Node}
+    config::{Cluster, Layout, Node},
+    repo::auth::{ProgressBarAuth, ProgressBarKind},
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -35,7 +35,9 @@ impl RootRepo {
         let git = GitWrapper::new("root", layout)
             .with_url(url.as_ref())
             .with_kind(RepoKind::Bare)
-            .with_auth_prompt(ProgressBarAuth::new(ProgressBarKind::SingleBar(bar.clone())));
+            .with_auth_prompt(ProgressBarAuth::new(ProgressBarKind::SingleBar(
+                bar.clone(),
+            )));
         git.clone_with_progress(&bar)?;
         bar.finish_and_clear();
 
@@ -130,8 +132,9 @@ impl MultiClone {
             .node
             .iter()
             .map(|(name, node)| {
-                GitWrapper::from_node(name, node, layout)
-                    .with_auth_prompt(ProgressBarAuth::new(ProgressBarKind::MultiBar(multi_bar.clone())))
+                GitWrapper::from_node(name, node, layout).with_auth_prompt(ProgressBarAuth::new(
+                    ProgressBarKind::MultiBar(multi_bar.clone()),
+                ))
             })
             .collect();
         Self { repos, multi_bar }
@@ -377,7 +380,7 @@ impl RepoKind {
         }
     }
 
-    pub (crate) fn unwrap_alias_worktree(&self) -> Option<&Path> {
+    pub(crate) fn unwrap_alias_worktree(&self) -> Option<&Path> {
         match self {
             RepoKind::Normal | RepoKind::Bare => None,
             RepoKind::BareAlias(alias) => Some(alias.0.as_ref()),

@@ -42,7 +42,10 @@ pub use cluster::*;
 
 use anyhow::{anyhow, Result};
 use mkdirp::mkdirp;
-use std::{path::{Path, PathBuf}, io::Read};
+use std::{
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 pub fn read_config<P, C>(path: P, layout: &Layout) -> Result<C>
 where
