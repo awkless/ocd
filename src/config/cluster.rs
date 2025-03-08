@@ -32,16 +32,21 @@ pub struct Cluster {
 
 impl Cluster {
     /// Iterate through dependencies of a node.
-    pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
+    pub fn dependency_iter(&self, node: impl Into<String>) -> Result<DependencyIter<'_>> {
+        let node = node.into();
+        if !self.node.contains_key(&node) {
+            return Err(anyhow!("Node '{node}' does not exist in cluster"));
+        } 
+
         let mut stack = VecDeque::new();
-        stack.push_front(node.into());
+        stack.push_front(node);
 
         log::debug!("Iterate through dependencies of {}", stack.front().unwrap());
-        DependencyIter {
+        Ok(DependencyIter {
             graph: &self.node,
             visited: HashSet::new(),
             stack,
-        }
+        })
     }
 
     /// Check for a cycle between node dependencies.
