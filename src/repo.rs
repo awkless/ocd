@@ -25,6 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[derive(Debug, Default, Clone)]
 pub struct RootRepo {
     git: GitWrapper,
 }
@@ -77,6 +78,10 @@ impl RootRepo {
         self.git.deploy()
     }
 
+    pub fn undeploy(&self) -> Result<()> {
+        self.git.undeploy()
+    }
+
     pub fn nuke_cluster(&self, layout: &Layout) -> Result<()> {
         log::info!("Clear out cluster");
         self.git.sparsity.exclude_all()?;
@@ -96,6 +101,7 @@ impl RootRepo {
     }
 }
 
+#[derive(Debug, Default, Clone)]
 pub struct NodeRepo {
     git: GitWrapper,
 }
@@ -108,6 +114,10 @@ impl NodeRepo {
 
     pub fn deploy(&self) -> Result<()> {
         self.git.deploy()
+    }
+
+    pub fn undeploy(&self) -> Result<()> {
+        self.git.undeploy()
     }
 
     pub fn git_bin(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
@@ -270,17 +280,20 @@ impl GitWrapper {
     }
 
     pub fn deploy(&self) -> Result<()> {
-        if !self.path.exists() {
-            log::warn!("Must clone {} before deployment", &self.url);
-            let bar = ProgressBar::no_length();
-            self.clone_with_progress(&bar)?;
-            bar.finish_and_clear();
-        }
-
         self.sparsity.exclude_unwanted()?;
         let output = self.syscall(["checkout"])?;
         if !output.is_empty() {
             log::info!("deploy {}:\n{output}", self.path.display());
+        }
+
+        Ok(())
+    }
+
+    pub fn undeploy(&self) -> Result<()> {
+        self.sparsity.exclude_all()?;
+        let output = self.syscall(["checkout"])?;
+        if !output.is_empty() {
+            log::info!("undeploy {}:\n{output}", self.path.display());
         }
 
         Ok(())
