@@ -32,10 +32,10 @@ pub struct Cluster {
 
 impl Cluster {
     pub fn get_node(&self, name: impl AsRef<str>) -> Result<(&String, &Node)> {
-        self
-            .node
-            .get_key_value(name.as_ref())
-            .ok_or(anyhow!("Node '{}' does not exist in cluster", name.as_ref()))
+        self.node.get_key_value(name.as_ref()).ok_or(anyhow!(
+            "Node '{}' does not exist in cluster",
+            name.as_ref()
+        ))
     }
 
     /// Iterate through dependencies of a node.
@@ -43,7 +43,7 @@ impl Cluster {
         let node = node.into();
         if !self.node.contains_key(&node) {
             return Err(anyhow!("Node '{node}' does not exist in cluster"));
-        } 
+        }
 
         let mut stack = VecDeque::new();
         stack.push_front(node);
