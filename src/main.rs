@@ -10,7 +10,7 @@ mod repo;
 mod tests;
 
 use crate::{
-    config::{read_config, Cluster, Layout, Node},
+    config::{read_config, Cluster, Layout},
     repo::{MultiClone, NodeRepo, RootRepo},
 };
 
@@ -42,6 +42,9 @@ pub enum Command {
     #[command(override_usage = "ocd deploy [options] [node_names]...")]
     Deploy(DeployOptions),
 
+    #[command(override_usage = "ocd undeploy [options] [node_names]...")]
+    Undeploy(UndeployOptions),
+
     #[command(external_subcommand)]
     Git(Vec<OsString>),
 }
@@ -60,6 +63,12 @@ pub struct CloneOptions {
 
 #[derive(Args, Debug)]
 pub struct DeployOptions {
+    #[arg(value_parser, num_args = 1.., value_delimiter = ',')]
+    node_names: Vec<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct UndeployOptions {
     #[arg(value_parser, num_args = 1.., value_delimiter = ',')]
     node_names: Vec<String>,
 }
@@ -107,13 +116,35 @@ async fn run() -> Result<ExitCode> {
             root.deploy()?;
             multi_clone.clone_all(args.jobs).await?;
         }
-        Command::Deploy(args) => {
+        Command::Deploy(mut args) => {
             let cluster: Cluster = read_config("cluster.toml", &layout)?;
+
+            args.node_names.dedup();
+            if let Some(index) = args.node_names.iter().position(|x| *x == "root") {
+                args.node_names.swap_remove(index);
+                log::warn!("Ignoring 'root', because root of cluster is always deployed");
+            }
+
             for node_name in args.node_names {
-                for (name, node) in cluster.dependency_iter(node_name) {
-                    // TODO: Handle case where user wants to deploy root.
+                for (name, node) in cluster.dependency_iter(node_name)? {
                     let repo = NodeRepo::from_node(name, node, &layout);
                     repo.deploy()?;
+                }
+            }
+        }
+        Command::Undeploy(mut args) => {
+            let cluster: Cluster = read_config("cluster.toml", &layout)?;
+
+            args.node_names.dedup();
+            if let Some(index) = args.node_names.iter().position(|x| *x == "root") {
+                args.node_names.swap_remove(index);
+                log::warn!("Ignoring 'root', because root of cluster cannot be undeployed");
+            }
+
+            for node_name in args.node_names.iter() {
+                for (name, node) in cluster.dependency_iter(node_name)? {
+                    let repo = NodeRepo::from_node(name, node, &layout);
+                    repo.undeploy()?;
                 }
             }
         }
