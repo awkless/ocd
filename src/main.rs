@@ -71,6 +71,10 @@ pub struct DeployOptions {
     /// Do not deploy dependencies of target nodes.
     #[arg(short, long)]
     pub only: bool,
+
+    /// Deploy excluded files as well.
+    #[arg(short, long)]
+    pub with_excluded: bool
 }
 
 /// Undeploy nodes of cluster.
@@ -142,11 +146,19 @@ async fn run() -> Result<ExitCode> {
                 if args.only {
                     let (name, node) = cluster.get_node(node_name)?;
                     let repo = NodeRepo::from_node(name, node, &layout);
-                    repo.deploy()?;
+                    if args.with_excluded {
+                        repo.deploy_all()?;
+                    } else {
+                        repo.deploy()?;
+                    }
                 } else {
                     for (name, node) in cluster.dependency_iter(node_name)? {
                         let repo = NodeRepo::from_node(name, node, &layout);
-                        repo.deploy()?;
+                        if args.with_excluded {
+                            repo.deploy_all()?;
+                        } else {
+                            repo.deploy()?;
+                        }
                     }
                 }
             }

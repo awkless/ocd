@@ -116,6 +116,10 @@ impl NodeRepo {
         self.git.deploy()
     }
 
+    pub fn deploy_all(&self) -> Result<()> {
+        self.git.deploy_all()
+    }
+
     pub fn undeploy(&self) -> Result<()> {
         self.git.undeploy()
     }
@@ -289,6 +293,16 @@ impl GitWrapper {
         Ok(())
     }
 
+    pub fn deploy_all(&self) -> Result<()> {
+        self.sparsity.include_all()?;
+        let output = self.syscall(["checkout"])?;
+        if !output.is_empty() {
+            log::info!("deploy {}:\n{output}", self.path.display());
+        }
+
+        Ok(())
+    }
+
     pub fn undeploy(&self) -> Result<()> {
         self.sparsity.exclude_all()?;
         let output = self.syscall(["checkout"])?;
@@ -350,6 +364,12 @@ impl SparseManip {
         let mut vec = Vec::new();
         vec.extend(unwanted.into_iter().map(Into::into));
         self.rules = vec;
+    }
+
+    fn include_all(&self) -> Result<()> {
+        let mut file = File::create(&self.sparse_path)?;
+        file.write_all("/*".as_bytes())?;
+        Ok(())
     }
 
     fn exclude_unwanted(&self) -> Result<()> {
