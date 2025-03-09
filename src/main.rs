@@ -175,7 +175,9 @@ async fn run() -> Result<ExitCode> {
         Command::Git(args) => {
             let cluster: Cluster = read_config("cluster.toml", &layout)?;
             let node_names = args[0].to_string_lossy().into_owned();
-            let node_names: Vec<&str> = node_names.split(',').collect();
+            let mut node_names: Vec<&str> = node_names.split(',').collect();
+            node_names.dedup();
+
             for node_name in node_names {
                 if node_name == "root" {
                     let root = RootRepo::from_cluster(&cluster, &layout);
