@@ -181,7 +181,8 @@ async fn run() -> Result<ExitCode> {
                     let root = RootRepo::from_cluster(&cluster, &layout);
                     root.git_bin(args[1..].to_vec())?;
                 } else {
-                    let node = NodeRepo::from_node(node_name, &cluster.node[node_name], &layout);
+                    let (name, node) = cluster.get_node(node_name)?;
+                    let node = NodeRepo::from_node(name, node, &layout);
                     node.git_bin(args[1..].to_vec())?;
                 }
             }
