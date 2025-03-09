@@ -31,6 +31,25 @@ pub struct RootRepo {
 }
 
 impl RootRepo {
+    pub fn new_open(layout: &Layout) -> Result<Self> {
+        if !layout.data_dir().join("root").exists() {
+            return Err(anyhow!("Root does not exist"));
+        }
+
+        let git = GitWrapper::new("root", layout).with_kind(RepoKind::Bare);
+        let mut root = Self { git };
+        let cluster = root.get_cluster()?;
+        let worktree = cluster
+            .worktree
+            .unwrap_or(layout.config_dir().to_path_buf());
+        root.git.kind = RepoKind::BareAlias(AliasDir::new(worktree));
+        root.git
+            .sparsity
+            .add_unwanted(cluster.excludes.iter().flatten());
+
+        Ok(root)
+    }
+
     pub fn new_clone(url: impl AsRef<str>, layout: &Layout) -> Result<Self> {
         let bar = ProgressBar::no_length();
         let git = GitWrapper::new("root", layout)
@@ -78,8 +97,17 @@ impl RootRepo {
         self.git.deploy()
     }
 
-    pub fn undeploy(&self) -> Result<()> {
-        self.git.undeploy()
+    pub fn deploy_all(&self) -> Result<()> {
+        self.git.deploy_all()
+    }
+
+    pub fn undeploy_excludes(&self) -> Result<()> {
+        self.git.sparsity.exclude_unwanted()?;
+        let out = self.git.syscall(["checkout"])?;
+        if !out.is_empty() {
+            log::info!("undeploy excluded files for root\n{out}");
+        }
+        Ok(())
     }
 
     pub fn nuke_cluster(&self, layout: &Layout) -> Result<()> {
@@ -122,6 +150,18 @@ impl NodeRepo {
 
     pub fn undeploy(&self) -> Result<()> {
         self.git.undeploy()
+    }
+
+    pub fn undeploy_excludes(&self) -> Result<()> {
+        self.git.sparsity.exclude_unwanted()?;
+        let out = self.git.syscall(["checkout"])?;
+        if !out.is_empty() {
+            log::info!(
+                "undeploy excluded files for '{}'\n{out}",
+                self.git.path.display()
+            );
+        }
+        Ok(())
     }
 
     pub fn git_bin(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
@@ -297,7 +337,7 @@ impl GitWrapper {
         self.sparsity.include_all()?;
         let output = self.syscall(["checkout"])?;
         if !output.is_empty() {
-            log::info!("deploy {}:\n{output}", self.path.display());
+            log::info!("deploy full worktree {}:\n{output}", self.path.display());
         }
 
         Ok(())

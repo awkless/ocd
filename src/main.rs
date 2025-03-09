@@ -74,7 +74,7 @@ pub struct DeployOptions {
 
     /// Deploy excluded files as well.
     #[arg(short, long)]
-    pub with_excluded: bool
+    pub with_excluded: bool,
 }
 
 /// Undeploy nodes of cluster.
@@ -87,6 +87,10 @@ pub struct UndeployOptions {
     /// Do not undeploy dependencies of target nodes.
     #[arg(short, long)]
     pub only: bool,
+
+    /// Undeploy excluded files only.
+    #[arg(short, long)]
+    pub excluded_only: bool,
 }
 
 #[tokio::main]
@@ -133,12 +137,25 @@ async fn run() -> Result<ExitCode> {
             multi_clone.clone_all(args.jobs).await?;
         }
         Command::Deploy(mut args) => {
-            let cluster: Cluster = read_config("cluster.toml", &layout)?;
+            let (root, cluster) = if !layout.config_dir().join("cluster.toml").exists() {
+                let root = RootRepo::new_open(&layout)?;
+                let cluster = root.get_cluster()?;
+                root.deploy()?;
+                (root, cluster)
+            } else {
+                let cluster: Cluster = read_config("cluster.toml", &layout)?;
+                let root = RootRepo::from_cluster(&cluster, &layout);
+                (root, cluster)
+            };
 
             args.node_names.dedup();
             if let Some(index) = args.node_names.iter().position(|x| *x == "root") {
                 args.node_names.swap_remove(index);
-                log::warn!("Ignoring 'root', because root of cluster is always deployed");
+                if args.with_excluded {
+                    root.deploy_all()?;
+                } else {
+                    root.deploy()?;
+                }
             }
 
             for mut node_name in args.node_names {
@@ -164,12 +181,25 @@ async fn run() -> Result<ExitCode> {
             }
         }
         Command::Undeploy(mut args) => {
-            let cluster: Cluster = read_config("cluster.toml", &layout)?;
+            let (root, cluster) = if !layout.config_dir().join("cluster.toml").exists() {
+                let root = RootRepo::new_open(&layout)?;
+                let cluster = root.get_cluster()?;
+                root.deploy()?;
+                (root, cluster)
+            } else {
+                let cluster: Cluster = read_config("cluster.toml", &layout)?;
+                let root = RootRepo::from_cluster(&cluster, &layout);
+                (root, cluster)
+            };
 
             args.node_names.dedup();
             if let Some(index) = args.node_names.iter().position(|x| *x == "root") {
                 args.node_names.swap_remove(index);
-                log::warn!("Ignoring 'root', because root of cluster cannot be undeployed");
+                if args.excluded_only {
+                    root.undeploy_excludes()?;
+                } else {
+                    log::warn!("cannot undeploy root");
+                }
             }
 
             for mut node_name in args.node_names {
@@ -177,11 +207,19 @@ async fn run() -> Result<ExitCode> {
                 if args.only {
                     let (name, node) = cluster.get_node(node_name)?;
                     let repo = NodeRepo::from_node(name, node, &layout);
-                    repo.undeploy()?;
+                    if args.excluded_only {
+                        repo.undeploy_excludes()?;
+                    } else {
+                        repo.undeploy()?;
+                    }
                 } else {
                     for (name, node) in cluster.dependency_iter(node_name)? {
                         let repo = NodeRepo::from_node(name, node, &layout);
-                        repo.undeploy()?;
+                        if args.excluded_only {
+                            repo.undeploy_excludes()?;
+                        } else {
+                            repo.undeploy()?;
+                        }
                     }
                 }
             }
