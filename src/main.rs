@@ -73,10 +73,16 @@ pub struct DeployOptions {
     pub only: bool,
 }
 
+/// Undeploy nodes of cluster.
 #[derive(Args, Debug)]
 pub struct UndeployOptions {
-    #[arg(value_parser, num_args = 1.., value_delimiter = ',')]
-    node_names: Vec<String>,
+    /// List of nodes to undeploy.
+    #[arg(value_parser, num_args = 1.., value_delimiter = ',', value_name = "node_names")]
+    pub node_names: Vec<String>,
+
+    /// Do not undeploy dependencies of target nodes.
+    #[arg(short, long)]
+    pub only: bool,
 }
 
 #[tokio::main]
@@ -154,9 +160,15 @@ async fn run() -> Result<ExitCode> {
             }
 
             for node_name in args.node_names.iter() {
-                for (name, node) in cluster.dependency_iter(node_name)? {
+                if args.only {
+                    let (name, node) = cluster.get_node(node_name)?;
                     let repo = NodeRepo::from_node(name, node, &layout);
                     repo.undeploy()?;
+                } else {
+                    for (name, node) in cluster.dependency_iter(node_name)? {
+                        let repo = NodeRepo::from_node(name, node, &layout);
+                        repo.undeploy()?;
+                    }
                 }
             }
         }
