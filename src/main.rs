@@ -137,7 +137,8 @@ async fn run() -> Result<ExitCode> {
                 log::warn!("Ignoring 'root', because root of cluster is always deployed");
             }
 
-            for node_name in args.node_names {
+            for mut node_name in args.node_names {
+                node_name.retain(|c| !c.is_whitespace());
                 if args.only {
                     let (name, node) = cluster.get_node(node_name)?;
                     let repo = NodeRepo::from_node(name, node, &layout);
@@ -159,7 +160,8 @@ async fn run() -> Result<ExitCode> {
                 log::warn!("Ignoring 'root', because root of cluster cannot be undeployed");
             }
 
-            for node_name in args.node_names.iter() {
+            for mut node_name in args.node_names {
+                node_name.retain(|c| !c.is_whitespace());
                 if args.only {
                     let (name, node) = cluster.get_node(node_name)?;
                     let repo = NodeRepo::from_node(name, node, &layout);
@@ -174,7 +176,8 @@ async fn run() -> Result<ExitCode> {
         }
         Command::Git(args) => {
             let cluster: Cluster = read_config("cluster.toml", &layout)?;
-            let node_names = args[0].to_string_lossy().into_owned();
+            let mut node_names = args[0].to_string_lossy().into_owned();
+            node_names.retain(|c| !c.is_whitespace());
             let mut node_names: Vec<&str> = node_names.split(',').collect();
             node_names.dedup();
 
