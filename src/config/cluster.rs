@@ -31,6 +31,11 @@ pub struct Cluster {
 }
 
 impl Cluster {
+    /// Get specific node from cluster.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if node does not exist in cluster.
     pub fn get_node(&self, name: impl AsRef<str>) -> Result<(&String, &Node)> {
         self.node.get_key_value(name.as_ref()).ok_or(anyhow!(
             "Node '{}' does not exist in cluster",
@@ -39,6 +44,10 @@ impl Cluster {
     }
 
     /// Iterate through dependencies of a node.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if start node does not exist in cluster.
     pub fn dependency_iter(&self, node: impl Into<String>) -> Result<DependencyIter<'_>> {
         let node = node.into();
         if !self.node.contains_key(&node) {
@@ -109,6 +118,15 @@ impl Cluster {
         Ok(())
     }
 
+    /// Perform shell expansion on all available worktree fields.
+    ///
+    /// Will expand root worktree, and all node worktrees if available. The
+    /// caller is responsible for handling the case where the root or a node
+    /// does not have a worktree defined, i.e., [`None`].
+    ///
+    /// # Errors
+    ///
+    /// Will fail if worktree value cannot be shell expanded properly.
     pub fn expand_worktrees(&mut self) -> Result<()> {
         log::trace!("Expand worktree paths");
         if let Some(worktree) = &self.worktree {
@@ -165,7 +183,7 @@ impl str::FromStr for Cluster {
 ///
 /// # Invariant
 ///
-/// Nodes must be acircular.
+/// Node dependencies must be acircular.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq, Hash)]
 pub struct Node {
     /// URL to remote to clone from.
@@ -185,6 +203,7 @@ pub struct Node {
 }
 
 impl Node {
+    /// Determine the kind of repository the current node is.
     pub fn repo_kind(&self, layout: &Layout) -> RepoKind {
         match self.bare_alias {
             true => {
@@ -226,5 +245,219 @@ impl<'cluster> Iterator for DependencyIter<'cluster> {
             return Some((name.as_ref(), node));
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use anyhow::{anyhow, Result};
+    use rstest::{fixture, rstest};
+    use sealed_test::prelude::*;
+
+    #[fixture]
+    fn config() -> String {
+        r#"
+            worktree = "$HOME/ocd"
+
+            [node.sh]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+            worktree = "$HOME"
+
+            [node.shell_alias]
+            url = "git@example.org:~user/shell_alias.git"
+            bare_alias = true
+            worktree = "$HOME"
+
+            [node.bash]
+            url = "git@example.org:~user/bash.git"
+            bare_alias = true
+            worktree = "$HOME"
+            depends = ["sh", "shell_alias"]
+
+            [node.dwm]
+            url = "git@example.org:~user/dwm.git"
+            bare_alias = false
+        "#
+        .to_string()
+    }
+
+    #[rstest]
+    #[case::no_cycle(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+            depends = ["foo"]
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+            depends = ["bar"]
+        "#,
+        Ok(())
+    )]
+    #[case::no_cycle(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+        "#,
+        Ok(())
+    )]
+    #[case::no_cycle(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+            depends = ["bar", "baz"]
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+        "#,
+        Ok(())
+    )]
+    #[case::catch_cycle(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+            depends = ["baz"]
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+            depends = ["foo"]
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+            depends = ["bar"]
+        "#,
+        Err(anyhow!("fail")),
+    )]
+    #[case::catch_cycle(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+            depends = ["foo"]
+        "#,
+        Err(anyhow!("fail")),
+    )]
+    #[case::catch_cycle(
+        r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+            depends = ["foo", "bar", "baz"]
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+        "#,
+        Err(anyhow!("fail")),
+    )]
+    fn smoke_cluster_cycle_check(#[case] input: &str, #[case] expect: Result<()>) -> Result<()> {
+        let result: Result<Cluster> = input.parse();
+        match expect {
+            Ok(()) => assert!(result.is_ok()),
+            Err(_) => assert!(result.is_err()),
+        }
+        Ok(())
+    }
+
+    #[rstest]
+    #[sealed_test(env = [("HOME", "/some/path")])]
+    fn smoke_cluster_expand_worktrees(config: String) -> Result<()> {
+        let cluster: Cluster = config.parse()?;
+        assert_eq!(cluster.worktree, Some(PathBuf::from("/some/path/ocd")));
+        for (_, node) in cluster.node.iter() {
+            if let Some(worktree) = &node.worktree {
+                assert_eq!(worktree, &PathBuf::from("/some/path"));
+            }
+        }
+
+        Ok(())
+    }
+
+    #[rstest]
+    #[case::deps(
+        "bash",
+        vec![
+            (
+                "sh",
+                Node {
+                    url: "git@example.org:~user/sh.git".into(),
+                    bare_alias: true,
+                    worktree: Some("/some/path".into()),
+                    ..Default::default()
+                }
+            ),
+            (
+                "shell_alias",
+                Node {
+                    url: "git@example.org:~user/shell_alias.git".into(),
+                    bare_alias: true,
+                    worktree: Some("/some/path".into()),
+                    ..Default::default()
+                }
+            ),
+            (
+                "bash",
+                Node {
+                    url: "git@example.org:~user/bash.git".into(),
+                    bare_alias: true,
+                    worktree: Some("/some/path".into()),
+                    excludes: None,
+                    depends: Some(vec!["sh".into(), "shell_alias".into()]),
+                }
+            ),
+        ],
+    )]
+    #[case::no_deps(
+        "dwm",
+        vec![
+            (
+                "dwm",
+                Node {
+                    url: "git@example.org:~user/dwm.git".into(),
+                    ..Default::default()
+                }
+            )
+        ],
+    )]
+    #[sealed_test(env = [("HOME", "/some/path")])]
+    fn smoke_cluster_dependency_iter(
+        config: String,
+        #[case] node: &str,
+        #[case] mut expect: Vec<(&str, Node)>,
+    ) -> Result<()> {
+        let cluster: Cluster = config.parse()?;
+        let mut nodes = cluster
+            .dependency_iter(node)?
+            .collect::<Vec<(&str, &Node)>>();
+        nodes.sort_by(|(a, _), (b, _)| a.to_lowercase().cmp(&b.to_lowercase()));
+        expect.sort_by(|(a, _), (b, _)| a.to_lowercase().cmp(&b.to_lowercase()));
+        for ((name1, node1), (name2, node2)) in expect.iter().zip(nodes.iter()) {
+            assert_eq!(name1, name2);
+            assert_eq!(&node1, node2);
+        }
+        Ok(())
     }
 }

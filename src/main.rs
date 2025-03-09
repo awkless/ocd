@@ -6,9 +6,6 @@
 mod config;
 mod repo;
 
-#[cfg(test)]
-mod tests;
-
 use crate::{
     config::{read_config, Cluster, Layout},
     repo::{MultiClone, NodeRepo, RootRepo},
