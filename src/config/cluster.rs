@@ -31,6 +31,13 @@ pub struct Cluster {
 }
 
 impl Cluster {
+    pub fn get_node(&self, name: impl AsRef<str>) -> Result<(&String, &Node)> {
+        self
+            .node
+            .get_key_value(name.as_ref())
+            .ok_or(anyhow!("Node '{}' does not exist in cluster", name.as_ref()))
+    }
+
     /// Iterate through dependencies of a node.
     pub fn dependency_iter(&self, node: impl Into<String>) -> Result<DependencyIter<'_>> {
         let node = node.into();
