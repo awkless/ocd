@@ -10,6 +10,26 @@ version = 2
 [bans]
 multiple-versions = "deny"
 wildcards = "deny"
+skip = [
+  { name = "bitflags", version = "1.3.2" },
+  { name = "dirs", version = "5.0.1" },
+  { name = "dirs-sys", version = "0.4.1" },
+  { name = "mio", version = "0.8.11" },
+  { name = "redox_users", version = "0.4.6" },
+  { name = "thiserror", version = "1.0.69" },
+  { name = "thiserror-impl", version = "1.0.69" },
+  { name = "windows_x86_64_msvc", version = "0.48" },
+  { name = "windows_x86_64_gnullvm", version = "0.48" },
+  { name = "windows_x86_64_gnu", version = "0.48" },
+  { name = "windows_i686_msvc", version = "0.48" },
+  { name = "windows_i686_gnu", version = "0.48" },
+  { name = "windows_aarch64_msvc", version = "0.48" },
+  { name = "windows_aarch64_gnullvm", version = "0.48" },
+  { name = "windows-targets", version = "0.48" },
+  { name = "windows-sys", version = "0.48" },
+  { name = "windows-sys", version = "0.52" },
+  { name = "unicode-width", version = "0.1.14" },
+]
 
 [sources]
 unknown-registry = "deny"
@@ -20,4 +40,7 @@ confidence-threshold = 0.8
 allow = [
   "Apache-2.0",
   "MIT",
+  "MPL-2.0",
+  "BSD-2-Clause",
+  "Unicode-3.0",
 ]

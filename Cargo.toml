@@ -6,10 +6,28 @@ name = "ocd"
 description = "Organize current dotfiles"
 keywords = ["dotfile-manager", "cli-tool"]
 categories = ["command-line-utilities"]
-repository = "https://git.sr.ht/~awkless/ocd"
+repository = "https://github.com/awkless/ocd.git"
 readme = "README.md"
 authors = ["Jason Pena <jasonpena@awkless.com>"]
 edition = "2021"
 license = "MIT or Apache-2.0"
 version = "0.1.0"
 rust-version = "1.77.2"
+
+[dependencies]
+anyhow = "1.0.95"
+auth-git2 = "0.5.7"
+beau_collector = "0.2.1"
+clap = { version = "4.5.20", features = ["derive"] }
+clap-verbosity-flag = "2.2.2"
+dirs = "6.0.0"
+env_logger = "0.11.6"
+futures = "0.3.31"
+git2 = "0.20.0"
+indicatif = "0.17.11"
+inquire = "0.7.5"
+log = "0.4.25"
+mkdirp = "1.0.0"
+shellexpand = "3.1.0"
+tokio = { version = "1.0.0", features = ["full"] }
+toml_edit = "0.22.24"
