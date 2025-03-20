@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT or Apache-2.0
+
+[package]
+name = "ocd"
+description = "Organize current dotfiles"
+keywords = ["dotfile-manager", "cli-tool"]
+categories = ["command-line-utilities"]
+repository = "https://git.sr.ht/~awkless/ocd"
+readme = "README.md"
+authors = ["Jason Pena <jasonpena@awkless.com>"]
+edition = "2021"
+license = "MIT or Apache-2.0"
+version = "0.1.0"
+rust-version = "1.77.2"
