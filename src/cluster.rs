@@ -3,6 +3,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use toml_edit::DocumentMut;
+use std::path::PathBuf;
 
 #[derive(Default, Debug)]
 pub struct Cluster {
@@ -25,5 +26,17 @@ impl std::str::FromStr for Cluster {
 impl std::fmt::Display for Cluster {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "{}", self.document)
+    }
+}
+
+#[derive(Default, Debug, Eq, PartialEq, Clone)]
+pub struct Root {
+    pub worktree: Option<PathBuf>,
+    pub excludes: Option<Vec<String>>,
+}
+
+impl Root {
+    pub fn new() -> Self {
+        Default::default()
     }
 }
