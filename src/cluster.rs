@@ -21,3 +21,9 @@ impl std::str::FromStr for Cluster {
         Ok(Self { document })
     }
 }
+
+impl std::fmt::Display for Cluster {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.document)
+    }
+}
