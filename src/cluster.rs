@@ -12,3 +12,12 @@ pub struct Cluster {
 impl Cluster {
     // TODO: Implement this.
 }
+
+impl std::str::FromStr for Cluster {
+    type Err = anyhow::Error;
+
+    fn from_str(data: &str) -> Result<Self, Self::Err> {
+        let document: DocumentMut = data.parse().with_context(|| "Bad parse")?;
+        Ok(Self { document })
+    }
+}
