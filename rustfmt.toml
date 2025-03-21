@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: CC0-1.0
+
+edition = "2021"
+max_width = 100
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true
