@@ -24,6 +24,12 @@ impl Cluster {
         &self.root
     }
 
+    pub fn get_node(&self, name: impl AsRef<str>) -> Result<&Node> {
+        self.nodes
+            .get(name.as_ref())
+            .ok_or(anyhow!("Node '{}' not defined in cluster", name.as_ref()))
+    }
+
     pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
         let mut stack = VecDeque::new();
         stack.push_front(node.into());
@@ -314,7 +320,32 @@ mod tests {
     }
 
     #[test]
-    fn smake_cluster_dependency_iter() -> Result<()> {
+    fn smoke_cluster_get_node() -> Result<()> {
+        let config = r#"
+            [node.sh]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+            worktree = "/some/path"
+        "#;
+        let cluster: Cluster = config.parse()?;
+
+        let result = cluster.get_node("sh")?;
+        let expect = Node {
+            url: Some("git@example.org:~user/sh.git".into()),
+            bare_alias: true,
+            worktree: Some("/some/path".into()),
+            ..Default::default()
+        };
+        assert_eq!(result, &expect);
+
+        let result = cluster.get_node("nonexistent");
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn smoke_cluster_dependency_iter() -> Result<()> {
         let config = r#"
             [node.sh]
             url = "git@example.org:~user/sh.git"
