@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use anyhow::{anyhow, Context, Result};
-use std::{collections::{VecDeque, HashSet, HashMap}, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    path::PathBuf,
+};
 use toml_edit::{DocumentMut, Item, Table};
 
 #[derive(Default, Debug)]
@@ -19,6 +22,12 @@ impl Cluster {
 
     pub fn get_root(&self) -> &Root {
         &self.root
+    }
+
+    pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
+        let mut stack = VecDeque::new();
+        stack.push_front(node.into());
+        DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
     }
 
     fn acyclic_check(&self) -> Result<()> {
@@ -90,6 +99,40 @@ impl std::str::FromStr for Cluster {
 impl std::fmt::Display for Cluster {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(formatter, "{}", self.document)
+    }
+}
+
+#[derive(Debug)]
+pub struct DependencyIter<'cluster> {
+    graph: &'cluster HashMap<String, Node>,
+    visited: HashSet<String>,
+    stack: VecDeque<String>,
+}
+
+impl<'cluster> Iterator for DependencyIter<'cluster> {
+    type Item = (&'cluster str, &'cluster Node);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(node) = self.stack.pop_front() {
+            let (name, node) = match self.graph.get_key_value(&node) {
+                Some(pair) => pair,
+                None => {
+                    log::error!("Node '{node}' not defined in cluster");
+                    return None;
+                }
+            };
+
+            for depend in node.depends.iter().flatten() {
+                if !self.visited.contains(depend) {
+                    self.stack.push_front(depend.clone());
+                    self.visited.insert(depend.clone());
+                }
+            }
+
+            return Some((name.as_ref(), node));
+        }
+
+        None
     }
 }
 
@@ -266,6 +309,82 @@ mod tests {
             depends = ["bar"]
         "#;
         assert!(cycle.parse::<Cluster>().is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn smake_cluster_dependency_iter() -> Result<()> {
+        let config = r#"
+            [node.sh]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+            worktree = "/some/path"
+
+            [node.shell_alias]
+            url = "git@example.org:~user/shell_alias.git"
+            bare_alias = true
+            worktree = "/some/path"
+
+            [node.bash]
+            url = "git@example.org:~user/bash.git"
+            bare_alias = true
+            worktree = "/some/path"
+            depends = ["sh", "shell_alias"]
+
+            [node.dwm]
+            url = "git@example.org:~user/dwm.git"
+            bare_alias = false
+        "#;
+        let cluster: Cluster = config.parse()?;
+
+        let mut result: Vec<(&str, &Node)> = cluster.dependency_iter("bash").collect();
+        let mut expect = vec![
+            (
+                "sh",
+                Node {
+                    url: Some("git@example.org:~user/sh.git".into()),
+                    bare_alias: true,
+                    worktree: Some("/some/path".into()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "shell_alias",
+                Node {
+                    url: Some("git@example.org:~user/shell_alias.git".into()),
+                    bare_alias: true,
+                    worktree: Some("/some/path".into()),
+                    ..Default::default()
+                },
+            ),
+            (
+                "bash",
+                Node {
+                    url: Some("git@example.org:~user/bash.git".into()),
+                    bare_alias: true,
+                    worktree: Some("/some/path".into()),
+                    excludes: None,
+                    depends: Some(vec!["sh".into(), "shell_alias".into()]),
+                },
+            ),
+        ];
+        result.sort_by(|(a, _), (b, _)| a.to_lowercase().cmp(&b.to_lowercase()));
+        expect.sort_by(|(a, _), (b, _)| a.to_lowercase().cmp(&b.to_lowercase()));
+        for ((name1, node1), (name2, node2)) in expect.iter().zip(result.iter()) {
+            assert_eq!(name1, name2);
+            assert_eq!(&node1, node2);
+        }
+
+        let result: Vec<(&str, &Node)> = cluster.dependency_iter("dwm").collect();
+        let expect = vec![(
+            "dwm",
+            Node { url: Some("git@example.org:~user/dwm.git".into()), ..Default::default() },
+        )];
+        for ((name1, node1), (name2, node2)) in expect.iter().zip(result.iter()) {
+            assert_eq!(name1, name2);
+            assert_eq!(&node1, node2);
+        }
 
         Ok(())
     }
