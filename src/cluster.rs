@@ -3,14 +3,12 @@
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
-use toml_edit::{
-    visit::{visit_table_like_kv, Visit},
-    DocumentMut, Item, Table,
-};
+use toml_edit::{DocumentMut, Table};
 
 #[derive(Default, Debug)]
 pub struct Cluster {
     document: DocumentMut,
+    root: Root,
 }
 
 impl Cluster {
@@ -18,17 +16,19 @@ impl Cluster {
         Cluster::default()
     }
 
-    pub fn get_root(&self) -> Root {
-        let table = self.document.as_table();
-        Root::from(table)
+    pub fn get_root(&self) -> &Root {
+        &self.root
     }
 }
+
 impl std::str::FromStr for Cluster {
     type Err = anyhow::Error;
 
     fn from_str(data: &str) -> Result<Self, Self::Err> {
         let document: DocumentMut = data.parse().with_context(|| "Bad parse")?;
-        Ok(Self { document })
+        let table = document.as_table();
+        let root = Root::from(table);
+        Ok(Self { document, root })
     }
 }
 
@@ -42,7 +42,6 @@ impl std::fmt::Display for Cluster {
 pub struct Root {
     pub worktree: Option<PathBuf>,
     pub excludes: Option<Vec<String>>,
-    state: VisitState,
 }
 
 impl Root {
@@ -54,43 +53,12 @@ impl Root {
 impl<'toml> From<&'toml Table> for Root {
     fn from(table: &'toml Table) -> Self {
         let mut root = Root { ..Default::default() };
-        root.visit_table(table);
+        root.worktree = table.get("worktree").and_then(|n| n.as_str().map(Into::into));
+        root.excludes = table.get("excludes").and_then(|n| {
+            n.as_array()
+                .map(|a| a.into_iter().map(|s| s.as_str().unwrap_or_default().into()).collect())
+        });
         root
-    }
-}
-
-impl<'toml> Visit<'toml> for Root {
-    fn visit_table_like_kv(&mut self, key: &'toml str, node: &'toml Item) {
-        if self.state != VisitState::Root {
-            self.state = self.state.descend(key);
-            visit_table_like_kv(self, key, node);
-        }
-
-        if key == "worktree" {
-            self.worktree = node.as_str().map(Into::into);
-        }
-
-        if key == "excludes" {
-            self.excludes = node
-                .as_array()
-                .map(|a| a.into_iter().map(|s| s.as_str().unwrap_or_default().into()).collect());
-        }
-    }
-}
-
-#[derive(Copy, Default, Clone, Debug, Eq, PartialEq)]
-enum VisitState {
-    #[default]
-    Root,
-    Other,
-}
-
-impl VisitState {
-    fn descend(self, key: &str) -> Self {
-        match (self, key) {
-            (VisitState::Root, "worktree" | "excludes") => VisitState::Root,
-            (VisitState::Root | VisitState::Other, _) => VisitState::Other,
-        }
     }
 }
 
@@ -118,9 +86,8 @@ mod tests {
         let expect = Root {
             worktree: Some("/some/path".into()),
             excludes: Some(vec!["file1".into(), "file2".into()]),
-            state: VisitState::default(),
         };
-        assert_eq!(result, expect);
+        assert_eq!(result, &expect);
 
         Ok(())
     }
