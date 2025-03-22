@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use anyhow::{Context, Result};
-use std::{collections::HashMap, path::PathBuf};
+use anyhow::{anyhow, Context, Result};
+use std::{collections::{VecDeque, HashSet, HashMap}, path::PathBuf};
 use toml_edit::{DocumentMut, Item, Table};
 
 #[derive(Default, Debug)]
@@ -20,6 +20,49 @@ impl Cluster {
     pub fn get_root(&self) -> &Root {
         &self.root
     }
+
+    fn acyclic_check(&self) -> Result<()> {
+        let mut in_degree: HashMap<String, usize> = HashMap::new();
+        let mut count: usize = 0;
+        let mut queue: VecDeque<String> = VecDeque::new();
+        let mut visited: HashSet<String> = HashSet::new();
+
+        for (name, node) in self.nodes.iter() {
+            in_degree.entry(name.clone()).or_insert(0);
+            for depend in node.depends.iter().flatten() {
+                *in_degree.entry(depend.clone()).or_insert(0) += 1;
+            }
+        }
+
+        for (name, degree) in in_degree.iter() {
+            if *degree == 0 {
+                queue.push_back(name.clone());
+            }
+        }
+
+        while let Some(current) = queue.pop_front() {
+            count += 1;
+            for depend in self.nodes[&current].depends.iter().flatten() {
+                *in_degree.get_mut(depend).unwrap() -= 1;
+                if *in_degree.get(depend).unwrap() == 0 {
+                    queue.push_back(depend.clone());
+                }
+            }
+            visited.insert(current);
+        }
+
+        if count != self.nodes.len() {
+            let cycle: Vec<String> = self
+                .nodes
+                .iter()
+                .filter(|(name, _)| !visited.contains(*name))
+                .map(|(name, _)| name.clone())
+                .collect();
+            return Err(anyhow!("Cluster contains cycle(s): {cycle:?}"));
+        }
+
+        Ok(())
+    }
 }
 
 impl std::str::FromStr for Cluster {
@@ -28,7 +71,6 @@ impl std::str::FromStr for Cluster {
     fn from_str(data: &str) -> Result<Self, Self::Err> {
         let document: DocumentMut = data.parse().with_context(|| "Bad parse")?;
         let root = Root::from(document.as_table());
-
         let nodes = if let Some(node_table) = document.get("node").and_then(|n| n.as_table()) {
             node_table
                 .iter()
@@ -38,7 +80,10 @@ impl std::str::FromStr for Cluster {
             HashMap::new()
         };
 
-        Ok(Self { document, root, nodes })
+        let cluster = Self { document, root, nodes };
+        cluster.acyclic_check()?;
+
+        Ok(cluster)
     }
 }
 
@@ -110,7 +155,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn smoke_cluster_from_str() -> Result<()> {
+    fn smoke_cluster_from_str_extract_root_and_nodes() -> Result<()> {
         let toml = r#"
             worktree = "/some/path"
             excludes = ["file1", "file2"]
@@ -166,6 +211,61 @@ mod tests {
             Node { bare_alias: false, url: Some("https://some/url".into()), ..Default::default() },
         );
         assert_eq!(cluster.nodes, expect);
+
+        Ok(())
+    }
+
+    #[test]
+    fn smoke_cluster_from_str_acylic_check() -> Result<()> {
+        let single_node = r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+        "#;
+        assert!(single_node.parse::<Cluster>().is_ok());
+
+        let acyclic = r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+            depends = ["foo"]
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+            depends = ["bar"]
+        "#;
+        assert!(acyclic.parse::<Cluster>().is_ok());
+
+        let depend_self = r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+            depends = ["foo"]
+        "#;
+        assert!(depend_self.parse::<Cluster>().is_err());
+
+        let cycle = r#"
+            [node.foo]
+            url = "git@example.org:~user/foo.git"
+            bare_alias = true
+            depends = ["baz"]
+
+            [node.bar]
+            url = "git@example.org:~user/bar.git"
+            bare_alias = true
+            depends = ["foo"]
+
+            [node.baz]
+            url = "git@example.org:~user/baz.git"
+            bare_alias = true
+            depends = ["bar"]
+        "#;
+        assert!(cycle.parse::<Cluster>().is_err());
 
         Ok(())
     }
