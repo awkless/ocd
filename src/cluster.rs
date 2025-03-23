@@ -40,16 +40,13 @@ impl Cluster {
         let (name, node) = node;
 
         let (key, item) = node.to_toml(name.as_ref());
-        let table = match self.document.get_mut("node") {
-            Some(item) => {
-                item.as_table_mut().ok_or(anyhow!("Node table not defined as a table"))?
-            }
-            None => {
-                let mut new_table = Table::new();
-                new_table.set_implicit(true);
-                self.document.insert("node", Item::Table(new_table));
-                self.document["node"].as_table_mut().unwrap()
-            }
+        let table = if let Some(item) = self.document.get_mut("node") {
+            item.as_table_mut().ok_or(anyhow!("Node table not defined as a table"))?
+        } else {
+            let mut new_table = Table::new();
+            new_table.set_implicit(true);
+            self.document.insert("node", Item::Table(new_table));
+            self.document["node"].as_table_mut().unwrap()
         };
         table.insert(key.get(), item);
 
@@ -75,14 +72,14 @@ impl Cluster {
         let mut queue: VecDeque<String> = VecDeque::new();
         let mut visited: HashSet<String> = HashSet::new();
 
-        for (name, node) in self.nodes.iter() {
+        for (name, node) in &self.nodes {
             in_degree.entry(name.clone()).or_insert(0);
             for depend in node.depends.iter().flatten() {
                 *in_degree.entry(depend.clone()).or_insert(0) += 1;
             }
         }
 
-        for (name, degree) in in_degree.iter() {
+        for (name, degree) in &in_degree {
             if *degree == 0 {
                 queue.push_back(name.clone());
             }
@@ -122,7 +119,7 @@ impl Cluster {
             );
         }
 
-        for (name, node) in self.nodes.iter_mut() {
+        for (name, node) in &mut self.nodes {
             if let Some(worktree) = &node.worktree {
                 node.worktree = Some(
                     shellexpand::full(worktree.to_string_lossy().as_ref())
@@ -178,12 +175,9 @@ impl<'cluster> Iterator for DependencyIter<'cluster> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(node) = self.stack.pop_front() {
-            let (name, node) = match self.graph.get_key_value(&node) {
-                Some(pair) => pair,
-                None => {
-                    log::error!("Node '{node}' not defined in cluster");
-                    return None;
-                }
+            let Some((name, node)) = self.graph.get_key_value(&node) else {
+                log::error!("Node '{node}' not defined in cluster");
+                return None;
             };
 
             for depend in node.depends.iter().flatten() {
@@ -355,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn smoke_cluster_from_str_acylic_check() -> Result<()> {
+    fn smoke_cluster_from_str_acylic_check() {
         let single_node = r#"
             [node.foo]
             url = "git@example.org:~user/foo.git"
@@ -405,8 +399,6 @@ mod tests {
             depends = ["bar"]
         "#;
         assert!(cycle.parse::<Cluster>().is_err());
-
-        Ok(())
     }
 
     #[sealed_test(env = [("HOME", "/some/path")])]
@@ -437,7 +429,7 @@ mod tests {
         let cluster: Cluster = config.parse()?;
 
         assert_eq!(cluster.root.worktree, Some(PathBuf::from("/some/path/ocd")));
-        for (_, node) in cluster.nodes.iter() {
+        for node in cluster.nodes.values() {
             if let Some(worktree) = &node.worktree {
                 assert_eq!(worktree, &PathBuf::from("/some/path"));
             }
@@ -485,10 +477,10 @@ mod tests {
     fn smoke_cluster_add_node() -> Result<()> {
         let mut cluster = Cluster::new();
         let node = Node { bare_alias: false, ..Default::default() };
-        let expect = indoc! {r#"
+        let expect = indoc! {r"
             [node.sh]
             bare_alias = false
-        "#};
+        "};
         cluster.add_node(("sh", node))?;
         assert_eq!(cluster.to_string(), expect);
 
@@ -605,7 +597,7 @@ mod tests {
         }
 
         let result: Vec<(&str, &Node)> = cluster.dependency_iter("dwm").collect();
-        let expect = vec![(
+        let expect = [(
             "dwm",
             Node { url: Some("git@example.org:~user/dwm.git".into()), ..Default::default() },
         )];
