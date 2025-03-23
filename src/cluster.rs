@@ -36,6 +36,19 @@ impl Cluster {
         DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
     }
 
+    pub fn remove_node(&mut self, node: impl AsRef<str>) -> Result<Node> {
+        self.document
+            .get_mut("node")
+            .and_then(|n| n.as_table_mut())
+            .ok_or(anyhow!("Node table not defined"))?
+            .remove(node.as_ref())
+            .ok_or(anyhow!("Node '{}' not defined in cluster", node.as_ref()))?;
+
+        self.nodes
+            .remove(node.as_ref())
+            .ok_or(anyhow!("Node '{}' not defined in hashmap", node.as_ref()))
+    }
+
     fn acyclic_check(&self) -> Result<()> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
         let mut count: usize = 0;
@@ -228,6 +241,7 @@ impl<'toml> From<&'toml Item> for Node {
 mod tests {
     use super::*;
 
+    use pretty_assertions::assert_eq;
     use sealed_test::prelude::*;
 
     #[test]
@@ -379,6 +393,41 @@ mod tests {
                 assert_eq!(worktree, &PathBuf::from("/some/path"));
             }
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn smoke_cluster_remove_node() -> Result<()> {
+        let config = r#"
+            # Comment should be here.
+            [node.sh]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+
+            [node.bash]
+            url = "git@example.org:~user/bash.git"
+            bare_alias = true
+            depends = ["sh"]
+
+            [node.dwm]
+            url = "git@example.org:~user/dwm.git"
+            bare_alias = false
+        "#;
+        let mut cluster: Cluster = config.parse()?;
+        cluster.remove_node("bash")?;
+        let expect = r#"
+            # Comment should be here.
+            [node.sh]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+
+            [node.dwm]
+            url = "git@example.org:~user/dwm.git"
+            bare_alias = false
+        "#;
+        assert_eq!(cluster.to_string(), expect);
+        assert!(cluster.remove_node("nonexistent").is_err());
 
         Ok(())
     }
