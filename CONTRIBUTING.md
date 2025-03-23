@@ -37,7 +37,7 @@ The following are valid commit types that should be used:
 
 - `feat` commits, add or remove a new feature.
 - `fix` commits, fix bugs in codebase.
-- `ref` commits, rewrite/restructure code but does not change behavior.
+- `refactor` commits, rewrite/restructure code but does not change behavior.
 - `perf` commits, special `ref` commits that improve performance.
 - `style` commits, does not effect code meaning (whitespace, formatting, etc.).
 - `test` commits, add missing tests or correct existing tests.
