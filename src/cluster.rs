@@ -78,6 +78,30 @@ impl Cluster {
 
         Ok(())
     }
+
+    fn expand_worktrees(&mut self) -> Result<()> {
+        if let Some(worktree) = &self.root.worktree {
+            self.root.worktree = Some(
+                shellexpand::full(worktree.to_string_lossy().as_ref())
+                    .with_context(|| "Failed to expand root worktree")?
+                    .into_owned()
+                    .into(),
+            );
+        }
+
+        for (name, node) in self.nodes.iter_mut() {
+            if let Some(worktree) = &node.worktree {
+                node.worktree = Some(
+                    shellexpand::full(worktree.to_string_lossy().as_ref())
+                        .with_context(|| format!("Failed to expand {name} worktree"))?
+                        .into_owned()
+                        .into(),
+                );
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl std::str::FromStr for Cluster {
@@ -95,8 +119,9 @@ impl std::str::FromStr for Cluster {
             HashMap::new()
         };
 
-        let cluster = Self { document, root, nodes };
+        let mut cluster = Self { document, root, nodes };
         cluster.acyclic_check()?;
+        cluster.expand_worktrees()?;
 
         Ok(cluster)
     }
@@ -202,6 +227,8 @@ impl<'toml> From<&'toml Item> for Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use sealed_test::prelude::*;
 
     #[test]
     fn smoke_cluster_from_str_extract_root_and_nodes() -> Result<()> {
@@ -315,6 +342,43 @@ mod tests {
             depends = ["bar"]
         "#;
         assert!(cycle.parse::<Cluster>().is_err());
+
+        Ok(())
+    }
+
+    #[sealed_test(env = [("HOME", "/some/path")])]
+    fn smoke_cluster_from_str_expand_worktrees() -> Result<()> {
+        let config = r#"
+            worktree = "$HOME/ocd"
+
+            [node.sh]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+            worktree = "$HOME"
+
+            [node.shell_alias]
+            url = "git@example.org:~user/shell_alias.git"
+            bare_alias = true
+            worktree = "$HOME"
+
+            [node.bash]
+            url = "git@example.org:~user/bash.git"
+            bare_alias = true
+            worktree = "$HOME"
+            depends = ["sh", "shell_alias"]
+
+            [node.dwm]
+            url = "git@example.org:~user/dwm.git"
+            bare_alias = false
+        "#;
+        let cluster: Cluster = config.parse()?;
+
+        assert_eq!(cluster.root.worktree, Some(PathBuf::from("/some/path/ocd")));
+        for (_, node) in cluster.nodes.iter() {
+            if let Some(worktree) = &node.worktree {
+                assert_eq!(worktree, &PathBuf::from("/some/path"));
+            }
+        }
 
         Ok(())
     }
