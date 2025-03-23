@@ -6,10 +6,43 @@ SPDX-License-Identifier: MIT or Apache-2.0
 
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
-## [0.1.0] - 2025-03-21
+## [0.2.0](https://github.com/awkless/ocd/compare/v0.1.0..0.2.0) - 2025-03-23
 
 ### Documentation
 
+- *(contrib)* Use `refactor` instead of `ref` - ([790a3e6](https://github.com/awkless/ocd/commit/790a3e6904cd1b9cd8fc0812ae4b49616b72a5fe))
+
+### Features
+
+- *(bin)* Allow dead code - ([1e033df](https://github.com/awkless/ocd/commit/1e033df6971d31daf1a79694b6ac3c74ba9291a3))
+- *(cluster)* Add `Cluster` type - ([594673c](https://github.com/awkless/ocd/commit/594673ccc9f0aa6ea5104eb6ca8a36993360e174))
+- *(cluster)* Add `Cluster::from_str` - ([d8f3c75](https://github.com/awkless/ocd/commit/d8f3c75c7ffa6ac1c3dd6dbf36e08a1379febb95))
+- *(cluster)* Add `Cluster::to_string` - ([ed22755](https://github.com/awkless/ocd/commit/ed2275511a32ba08bb2a5bfbfdfb2ea8cb6531b1))
+- *(cluster)* Add `Root` type - ([a17f88f](https://github.com/awkless/ocd/commit/a17f88f931e0fec0551217b746caa55ec1f9ddec))
+- *(cluster)* Add `Cluster::get_root` - ([8eae938](https://github.com/awkless/ocd/commit/8eae93897786c58870c78f18a364d24029935994))
+- *(cluster)* Add `Node` type to deserialize into hashmap - ([adf22d5](https://github.com/awkless/ocd/commit/adf22d508dbd0613522914d858f0ad1a0818b3b1))
+- *(cluster)* Add acyclic graph check for nodes - ([fb830b9](https://github.com/awkless/ocd/commit/fb830b9bd7bd587c4d46f0b853a6cee3d0f1c90c))
+- *(cluster)* Add `Cluster::dependency_iter` - ([3819327](https://github.com/awkless/ocd/commit/3819327fec2b52d6c9be386e337d945a57a749c1))
+- *(cluster)* Add `Cluster::get_node` - ([e0c94e5](https://github.com/awkless/ocd/commit/e0c94e5ff800f0e7e547d085874b60ac4e935e9b))
+- *(cluster)* Make `Cluster::from_str` expand worktrees - ([de30c3b](https://github.com/awkless/ocd/commit/de30c3bdc5d7062764fb2abd5afa0b6f6053b097))
+- *(cluster)* Add `Cluster::remove_node` - ([2906109](https://github.com/awkless/ocd/commit/29061095c657373f87e45407ae3efd2f7e869024))
+- *(cluster)* Add `Cluster::add_node` - ([88fb053](https://github.com/awkless/ocd/commit/88fb053a7d9d437186ac983099972599245af458))
+
+### Miscellaneous Chores
+
+- *(ci)* Merge reuse compliance with quality checks - ([748517c](https://github.com/awkless/ocd/commit/748517c2f944d10d2b8553adc53d49c516ca3357))
+- *(cliff)* Use tag for initial version 0.1.0 - ([47fe597](https://github.com/awkless/ocd/commit/47fe597a07561c4d7a3daf3e124e2f6cb363de47))
+- *(rustfmt)* Use max heuristics - ([5343039](https://github.com/awkless/ocd/commit/534303977f8768136a5a816f7b18697f2315c3aa))
+
+### Refactoring
+
+- *(clippy)* Simplify code on pedantic settings - ([39ccd2a](https://github.com/awkless/ocd/commit/39ccd2ae90f84946179b0578314f7bec0b90cfe6))
+- *(cluster)* Extract root table elements directly - ([b99b839](https://github.com/awkless/ocd/commit/b99b8396a500847b2e1eac3189a458c0ad107eda))
+## [0.1.0](https://github.com/awkless/ocd/tree/v0.1.0) - 2025-03-21
+
+### Documentation
+
+- *(changelog)* Document version 0.1.0 - ([211e04a](https://github.com/awkless/ocd/commit/211e04ac980a3948a478bc7e637716e9d096421f))
 - *(contrib)* Make commit style more clear - ([aaa7d41](https://github.com/awkless/ocd/commit/aaa7d41e7f8428d50de9ff77ea1874d430b3f30b))
 - Add MIT, Apache-2.0, and CC0-1.0 licenses - ([d7a0cdc](https://github.com/awkless/ocd/commit/d7a0cdc930a042d28a906f524c095f3a752b83b3))
 - Add `README.md` file - ([79bf1bc](https://github.com/awkless/ocd/commit/79bf1bcee18398a860228abfd9157937db6850a8))
