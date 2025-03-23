@@ -6,7 +6,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
 };
-use toml_edit::{DocumentMut, Item, Table};
+use toml_edit::{Array, DocumentMut, Item, Key, Table, Value};
 
 #[derive(Default, Debug)]
 pub struct Cluster {
@@ -34,6 +34,26 @@ impl Cluster {
         let mut stack = VecDeque::new();
         stack.push_front(node.into());
         DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
+    }
+
+    pub fn add_node(&mut self, node: (impl AsRef<str>, Node)) -> Result<Option<Node>> {
+        let (name, node) = node;
+
+        let (key, item) = node.to_toml(name.as_ref());
+        let table = match self.document.get_mut("node") {
+            Some(item) => {
+                item.as_table_mut().ok_or(anyhow!("Node table not defined as a table"))?
+            }
+            None => {
+                let mut new_table = Table::new();
+                new_table.set_implicit(true);
+                self.document.insert("node", Item::Table(new_table));
+                self.document["node"].as_table_mut().unwrap()
+            }
+        };
+        table.insert(key.get(), item);
+
+        Ok(self.nodes.insert(name.as_ref().into(), node))
     }
 
     pub fn remove_node(&mut self, node: impl AsRef<str>) -> Result<Node> {
@@ -217,6 +237,34 @@ impl Node {
     pub fn new() -> Self {
         Node::default()
     }
+
+    pub fn to_toml(&self, name: &str) -> (Key, Item) {
+        let mut node = Table::new();
+        node.insert("bare_alias", Item::Value(Value::from(self.bare_alias)));
+
+        if let Some(url) = &self.url {
+            node.insert("url", Item::Value(Value::from(url)));
+        }
+
+        if let Some(worktree) = &self.worktree {
+            node.insert(
+                "worktree",
+                Item::Value(Value::from(worktree.to_string_lossy().into_owned())),
+            );
+        }
+
+        if let Some(excludes) = &self.excludes {
+            node.insert("excludes", Item::Value(Value::Array(Array::from_iter(excludes))));
+        }
+
+        if let Some(depends) = &self.depends {
+            node.insert("excludes", Item::Value(Value::Array(Array::from_iter(depends))));
+        }
+
+        let key = Key::new(name);
+        let value = Item::Table(node);
+        (key, value)
+    }
 }
 
 impl<'toml> From<&'toml Item> for Node {
@@ -241,6 +289,7 @@ impl<'toml> From<&'toml Item> for Node {
 mod tests {
     use super::*;
 
+    use indoc::indoc;
     use pretty_assertions::assert_eq;
     use sealed_test::prelude::*;
 
@@ -428,6 +477,41 @@ mod tests {
         "#;
         assert_eq!(cluster.to_string(), expect);
         assert!(cluster.remove_node("nonexistent").is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn smoke_cluster_add_node() -> Result<()> {
+        let mut cluster = Cluster::new();
+        let node = Node { bare_alias: false, ..Default::default() };
+        let expect = indoc! {r#"
+            [node.sh]
+            bare_alias = false
+        "#};
+        cluster.add_node(("sh", node))?;
+        assert_eq!(cluster.to_string(), expect);
+
+        let node_exists = indoc! {r#"
+            # Comment should be here.
+            [node.sh]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+        "#};
+        let mut cluster: Cluster = node_exists.parse()?;
+        let node = Node { url: Some("git@example.org:~user/dwm.git".into()), ..Default::default() };
+        cluster.add_node(("dwm", node))?;
+        let expect = indoc! {r#"
+            # Comment should be here.
+            [node.sh]
+            url = "git@example.org:~user/sh.git"
+            bare_alias = true
+
+            [node.dwm]
+            bare_alias = false
+            url = "git@example.org:~user/dwm.git"
+        "#};
+        assert_eq!(cluster.to_string(), expect);
 
         Ok(())
     }
