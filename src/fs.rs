@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Result};
 use mkdirp::mkdirp;
-use std::path::{Path, PathBuf};
+use std::{io::Read, path::{Path, PathBuf}};
 
 #[derive(Debug, Clone)]
 pub struct DirLayout {
@@ -35,4 +35,23 @@ impl DirLayout {
     pub fn data(&self) -> &Path {
         &self.data
     }
+}
+
+pub fn read_config<C>(path: impl AsRef<Path>, dirs: &DirLayout) -> Result<C>
+where
+    C: std::str::FromStr<Err = anyhow::Error>,
+{
+    let full_path = dirs.config().join(path.as_ref());
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(false)
+        .read(true)
+        .create(true)
+        .open(full_path)?;
+
+    let mut buffer = String::new();
+    file.read_to_string(&mut buffer)?;
+
+    let config: C = buffer.parse()?;
+    Ok(config)
 }
