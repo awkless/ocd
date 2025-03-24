@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 mod cluster;
+mod vcs;
 
 fn main() {
     println!("hello from ocd");
