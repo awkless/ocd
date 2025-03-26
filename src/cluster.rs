@@ -221,7 +221,7 @@ impl<'toml> From<&'toml Table> for Root {
 #[derive(Default, Debug, Eq, PartialEq, Clone)]
 pub struct Node {
     pub bare_alias: bool,
-    pub url: Option<String>,
+    pub url: String,
     pub worktree: Option<PathBuf>,
     pub excludes: Option<Vec<String>>,
     pub depends: Option<Vec<String>>,
@@ -235,10 +235,7 @@ impl Node {
     pub fn to_toml(&self, name: &str) -> (Key, Item) {
         let mut node = Table::new();
         node.insert("bare_alias", Item::Value(Value::from(self.bare_alias)));
-
-        if let Some(url) = &self.url {
-            node.insert("url", Item::Value(Value::from(url)));
-        }
+        node.insert("url", Item::Value(Value::from(&self.url)));
 
         if let Some(worktree) = &self.worktree {
             node.insert(
@@ -265,7 +262,7 @@ impl<'toml> From<&'toml Item> for Node {
     fn from(item: &'toml Item) -> Self {
         Self {
             bare_alias: item.get("bare_alias").and_then(Item::as_bool).unwrap_or_default(),
-            url: item.get("url").and_then(|n| n.as_str().map(Into::into)),
+            url: item.get("url").and_then(|n| n.as_str().map(Into::into)).unwrap_or_default(),
             worktree: item.get("worktree").and_then(|n| n.as_str().map(Into::into)),
             excludes: item.get("excludes").and_then(|n| {
                 n.as_array()
@@ -327,13 +324,13 @@ mod tests {
         );
         expect.insert(
             "sh".into(),
-            Node { bare_alias: true, url: Some("https://some/url".into()), ..Default::default() },
+            Node { bare_alias: true, url: "https://some/url".into(), ..Default::default() },
         );
         expect.insert(
             "bash".into(),
             Node {
                 bare_alias: true,
-                url: Some("https://some/url".into()),
+                url: "https://some/url".into(),
                 worktree: Some("home".into()),
                 excludes: Some(vec!["README*".into(), "LICENSE*".into()]),
                 depends: Some(vec!["sh".into()]),
@@ -341,7 +338,7 @@ mod tests {
         );
         expect.insert(
             "dwm".into(),
-            Node { bare_alias: false, url: Some("https://some/url".into()), ..Default::default() },
+            Node { bare_alias: false, url: "https://some/url".into(), ..Default::default() },
         );
         assert_eq!(cluster.nodes, expect);
 
@@ -477,10 +474,11 @@ mod tests {
     fn smoke_cluster_add_node() -> Result<()> {
         let mut cluster = Cluster::new();
         let node = Node { bare_alias: false, ..Default::default() };
-        let expect = indoc! {r"
+        let expect = indoc! {r#"
             [node.sh]
             bare_alias = false
-        "};
+            url = ""
+        "#};
         cluster.add_node(("sh", node))?;
         assert_eq!(cluster.to_string(), expect);
 
@@ -491,7 +489,7 @@ mod tests {
             bare_alias = true
         "#};
         let mut cluster: Cluster = node_exists.parse()?;
-        let node = Node { url: Some("git@example.org:~user/dwm.git".into()), ..Default::default() };
+        let node = Node { url: "git@example.org:~user/dwm.git".into(), ..Default::default() };
         cluster.add_node(("dwm", node))?;
         let expect = indoc! {r#"
             # Comment should be here.
@@ -520,7 +518,7 @@ mod tests {
 
         let result = cluster.get_node("sh")?;
         let expect = Node {
-            url: Some("git@example.org:~user/sh.git".into()),
+            url: "git@example.org:~user/sh.git".into(),
             bare_alias: true,
             worktree: Some("/some/path".into()),
             ..Default::default()
@@ -563,7 +561,7 @@ mod tests {
             (
                 "sh",
                 Node {
-                    url: Some("git@example.org:~user/sh.git".into()),
+                    url: "git@example.org:~user/sh.git".into(),
                     bare_alias: true,
                     worktree: Some("/some/path".into()),
                     ..Default::default()
@@ -572,7 +570,7 @@ mod tests {
             (
                 "shell_alias",
                 Node {
-                    url: Some("git@example.org:~user/shell_alias.git".into()),
+                    url: "git@example.org:~user/shell_alias.git".into(),
                     bare_alias: true,
                     worktree: Some("/some/path".into()),
                     ..Default::default()
@@ -581,7 +579,7 @@ mod tests {
             (
                 "bash",
                 Node {
-                    url: Some("git@example.org:~user/bash.git".into()),
+                    url: "git@example.org:~user/bash.git".into(),
                     bare_alias: true,
                     worktree: Some("/some/path".into()),
                     excludes: None,
@@ -597,10 +595,8 @@ mod tests {
         }
 
         let result: Vec<(&str, &Node)> = cluster.dependency_iter("dwm").collect();
-        let expect = [(
-            "dwm",
-            Node { url: Some("git@example.org:~user/dwm.git".into()), ..Default::default() },
-        )];
+        let expect =
+            [("dwm", Node { url: "git@example.org:~user/dwm.git".into(), ..Default::default() })];
         for ((name1, node1), (name2, node2)) in expect.iter().zip(result.iter()) {
             assert_eq!(name1, name2);
             assert_eq!(&node1, node2);
