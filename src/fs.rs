@@ -3,7 +3,10 @@
 
 use anyhow::{anyhow, Result};
 use mkdirp::mkdirp;
-use std::{io::Read, path::{Path, PathBuf}};
+use std::{
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone)]
 pub struct DirLayout {
