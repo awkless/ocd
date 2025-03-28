@@ -1,6 +1,35 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+//! Cluster configuration management.
+//!
+//! This module provides basic APIs to manage and manipulate OCD's cluster configuration model.
+//! Given that certain OCD commands must modify the contents of the user's cluster configuration,
+//! the APIs provided here ensure preservation of existing formatting and whitespace for both
+//! deserialization and serialization.
+//!
+//! ## Clusters
+//!
+//! The OCD tool operates on a __cluster__. A _cluster_ is a collection of Git repositories that
+//! can be deployed together. The cluster is comprised of three repository types: __normal__,
+//! __bare-alias__, and __root__. A _normal_ repository is just a regular Git repository whose
+//! gitdir and worktree point to the same path. A _bare-alias_ repository is a bare Git repository
+//! that uses a target directory as an alias of a worktree. That target directory can be treated
+//! like a Git repository without initilization through the OCD tool itself.
+//!
+//! Finally, a _root_ repository is very special. It represents the root of the cluster itself. It
+//! is responsible for containing the cluster configuration file that this module is meant to
+//! handle. Thus, all repository deployment for a given cluster definition originates right here in
+//! the root repository. However, a cluster can only have _one_ root, i.e., one repository
+//! containing one copy of the cluster configuration file to deploy from.
+//!
+//! The concept of a cluster provides the user with a lot of flexibility in how they choose to
+//! organize their dotfile configurations. The user can store dotfiles in separate repositories and
+//! plug them into a given cluster whenever they want. The user can also maintain a monolithic
+//! repository containing every possible configuration file they use. Whatever method of
+//! organization the user chooses, the OCD tool's cluster configuration model will provide flexible
+//! and adaptable support.
+
 use anyhow::{anyhow, Context, Result};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
@@ -8,30 +37,64 @@ use std::{
 };
 use toml_edit::{Array, DocumentMut, Item, Key, Table, Value};
 
+/// Format preserving cluster configuration parser.
+///
+/// Obtains valid parsing of user's cluster configuration definition in deserialzed form. Provides
+/// additional utilities to make it easier to extract and serialize cluster data for further
+/// manipulation when needed. This type only operates on strings. Caller is responsible for file
+/// I/O.
+///
+/// ## Cluster definition
+///
+/// A __cluster definition__ is comprised of two basic components: __root__ and __node__. A root
+/// configures the root repository, and a __node__ configures a normal or bare-alias repository for
+/// deployment. The root uses the root table, while a node uses a special reserved table named
+/// "node" with a dotted key representing the name of the node entry itself, e.g., "node.vim".
 #[derive(Default, Debug)]
 pub struct Cluster {
-    document: DocumentMut,
+    /// Root of cluster definition.
     pub root: Root,
+
+    /// All node entries in cluster definition.
     pub nodes: HashMap<String, Node>,
+
+    document: DocumentMut,
 }
 
 impl Cluster {
+    /// Construct new empty cluster definition.
     pub fn new() -> Self {
         Cluster::default()
     }
 
+    /// Get single node by name.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if node does not exist in cluster.
     pub fn get_node(&self, name: impl AsRef<str>) -> Result<&Node> {
         self.nodes
             .get(name.as_ref())
             .ok_or(anyhow!("Node '{}' not defined in cluster", name.as_ref()))
     }
 
+    /// Iterate through all dependencies of a target node by name.
+    ///
+    /// Provides full path through each dependency through a given node, include the node itself.
     pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
         let mut stack = VecDeque::new();
         stack.push_front(node.into());
         DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
     }
 
+    /// Add new node into cluster.
+    ///
+    /// Will insert new node into cluster, returning [`None`] if the node was actually new, or
+    /// [`Some`] containing the old node it replaced if it was not new.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail "node" table was not actually defined as a table.
     pub fn add_node(&mut self, node: (impl AsRef<str>, Node)) -> Result<Option<Node>> {
         let (name, node) = node;
 
@@ -49,6 +112,12 @@ impl Cluster {
         Ok(self.nodes.insert(name.as_ref().into(), node))
     }
 
+    /// Remove existing node from cluster.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if target node does not exist in cluster, or "node" table was not defined as a
+    /// table.
     pub fn remove_node(&mut self, node: impl AsRef<str>) -> Result<Node> {
         self.document
             .get_mut("node")
@@ -159,6 +228,11 @@ impl std::fmt::Display for Cluster {
     }
 }
 
+/// Iterator for generating valid node dependency path.
+///
+/// ## Invariants
+///
+/// 1. Nodes and their dependencies are acyclic.
 #[derive(Debug)]
 pub struct DependencyIter<'cluster> {
     graph: &'cluster HashMap<String, Node>,
@@ -190,13 +264,18 @@ impl<'cluster> Iterator for DependencyIter<'cluster> {
     }
 }
 
+/// Configuration options for root of cluster.
 #[derive(Default, Debug, Eq, PartialEq, Clone)]
 pub struct Root {
+    /// Target directory to act as the worktree alias for deployment.
     pub worktree: Option<PathBuf>,
+
+    /// List of files to exclude from deployment using sparse checkout.
     pub excludes: Option<Vec<String>>,
 }
 
 impl Root {
+    /// Construct new empty root.
     pub fn new() -> Self {
         Root::default()
     }
@@ -214,20 +293,35 @@ impl<'toml> From<&'toml Table> for Root {
     }
 }
 
+/// Configuration options for node entry in cluster.
 #[derive(Default, Debug, Eq, PartialEq, Clone)]
 pub struct Node {
+    /// True if node is bare-alias, false if normal.
     pub bare_alias: bool,
+
+    /// URL to clone node repository from.
     pub url: String,
+
+    /// Target directory to act as the worktree alias for deployment.
     pub worktree: Option<PathBuf>,
+
+    /// List of files to exclude from deployment using sparse checkout.
     pub excludes: Option<Vec<String>>,
+
+    /// List of node dependencies to include for deployment.
     pub depends: Option<Vec<String>>,
 }
 
 impl Node {
+    /// Construct new empty node.
     pub fn new() -> Self {
         Node::default()
     }
 
+    /// Convert [`Node`] to valid TOML entry.
+    ///
+    /// Will ensure that optional fields are left out of the generated TOML data when defined as
+    /// [`None`] for cleaner serialized output.
     pub fn to_toml(&self, name: &str) -> (Key, Item) {
         let mut node = Table::new();
         node.insert("bare_alias", Item::Value(Value::from(self.bare_alias)));
