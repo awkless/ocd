@@ -11,17 +11,13 @@ use toml_edit::{Array, DocumentMut, Item, Key, Table, Value};
 #[derive(Default, Debug)]
 pub struct Cluster {
     document: DocumentMut,
-    root: Root,
-    nodes: HashMap<String, Node>,
+    pub root: Root,
+    pub nodes: HashMap<String, Node>,
 }
 
 impl Cluster {
     pub fn new() -> Self {
         Cluster::default()
-    }
-
-    pub fn get_root(&self) -> &Root {
-        &self.root
     }
 
     pub fn get_node(&self, name: impl AsRef<str>) -> Result<&Node> {
