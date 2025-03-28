@@ -1,19 +1,141 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-use crate::fs::DirLayout;
+use crate::{
+    cluster::{Cluster, Node},
+    fs::DirLayout,
+};
 
 use anyhow::{anyhow, Context, Result};
 use auth_git2::{GitAuthenticator, Prompter};
+use beau_collector::BeauCollector as _;
+use futures::{stream, StreamExt};
 use git2::{build::RepoBuilder, FetchOptions, RemoteCallbacks};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use inquire::{Password, Text};
 use std::{
     ffi::{OsStr, OsString},
-    path::{PathBuf, Path},
+    fmt::Write as FmtWrite,
+    path::{Path, PathBuf},
     process::{Command, Output},
+    io::Write as IoWrite,
+    sync::{Arc, Mutex},
+    fs::File,
     time::{Duration, Instant},
 };
+
+#[derive(Debug, Default, Clone)]
+pub struct RootRepo(Git);
+
+impl RootRepo {
+    pub fn new_clone(url: impl AsRef<str>, dirs: &DirLayout) -> Result<Self> {
+        let bar = ProgressBar::no_length();
+        let git = Git::new("root", dirs)
+            .with_url(url.as_ref())
+            .with_kind(RepoKind::Bare)
+            .with_auth_prompt(ProgressBarAuth::new(ProgressBarKind::SingleBar(
+                bar.clone(),
+            )));
+        git.clone_with_progress(&bar)?;
+        bar.finish_and_clear();
+
+        let mut root = Self(git);
+        let cluster = root.get_cluster()?;
+        let worktree = cluster.root.worktree.unwrap_or(dirs.config().to_path_buf());
+        root.0 = root.0.with_kind(RepoKind::BareAlias(AliasDir::new(worktree)));
+        root.0 = root.0.with_excludes(cluster.root.excludes.iter().flatten());
+
+        Ok(root)
+    }
+
+    pub fn get_cluster(&self) -> Result<Cluster> {
+        self.0
+            .bincall(["cat-file", "-p", "@:cluster.toml"])?
+            .replace("stdout:", "")
+            .parse::<Cluster>()
+    }
+
+    pub fn deploy(&self) -> Result<()> {
+        self.0.deploy()
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct NodeRepo(Git);
+
+impl NodeRepo {
+    pub fn new(name: &str, node: &Node, dirs: &DirLayout) -> Self {
+        let kind = if node.bare_alias {
+            let path = node.worktree.as_ref().map_or(dirs.home(), |p| p.as_ref());
+            RepoKind::BareAlias(AliasDir::new(path))
+        } else {
+            RepoKind::Normal
+        };
+
+        let git = Git::new(name, dirs).with_kind(kind).with_url(node.url.clone());
+
+        Self(git)
+    }
+
+    pub fn with_progress_bar(mut self, kind: ProgressBarKind) -> Self {
+        self.0 = self.0.with_auth_prompt(ProgressBarAuth::new(kind));
+        self
+    }
+}
+
+pub struct MultiNodeClone {
+    nodes: Vec<NodeRepo>,
+    multi_bar: MultiProgress,
+}
+
+impl MultiNodeClone {
+    pub fn new(cluster: &Cluster, dirs: &DirLayout) -> Self {
+        let multi_bar = MultiProgress::new();
+        let nodes: Vec<NodeRepo> = cluster
+            .nodes
+            .iter()
+            .map(|(name, node)| {
+                NodeRepo::new(name, node, dirs)
+                    .with_progress_bar(ProgressBarKind::MultiBar(multi_bar.clone()))
+            })
+            .collect();
+        Self { nodes, multi_bar }
+    }
+
+    pub async fn clone_all(self, jobs: Option<usize>) -> Result<()> {
+        let mut bars = Vec::new();
+        let results = Arc::new(Mutex::new(Vec::new()));
+
+        stream::iter(self.nodes)
+            .for_each_concurrent(jobs, |node| {
+                let bar = self.multi_bar.add(ProgressBar::no_length());
+
+                bars.push(bar.clone());
+                let results = results.clone();
+
+                async move {
+                    let result = tokio::spawn(Self::clone_task(node, bar)).await;
+                    let mut guard = results.lock().unwrap();
+                    guard.push(result);
+                    drop(guard);
+                }
+            })
+            .await;
+
+        for bar in bars {
+            bar.finish_and_clear();
+        }
+
+        let results = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
+        let _ = results.into_iter().flatten().bcollect::<Vec<_>>()?;
+
+        Ok(())
+    }
+
+    async fn clone_task(node: NodeRepo, bar: ProgressBar) -> Result<()> {
+        node.0.clone_with_progress(&bar).with_context(|| format!("Failed to clone {}", node.0.url))
+    }
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct Git {
@@ -21,18 +143,17 @@ pub struct Git {
     kind: RepoKind,
     url: String,
     auth: GitAuthenticator,
+    sparsity: SparseManip,
 }
 
 impl Git {
     pub fn new(repo: &str, dirs: &DirLayout) -> Self {
-        Self {
-            path: dirs.data().join(repo),
-            ..Default::default()
-        }
+        Self { path: dirs.data().join(repo), ..Default::default() }
     }
 
     pub fn with_kind(mut self, kind: RepoKind) -> Self {
         self.kind = kind;
+        self.sparsity.set_sparse_path(self.path.as_ref(), &self.kind);
         self
     }
 
@@ -46,6 +167,11 @@ impl Git {
         self
     }
 
+    pub fn with_excludes(mut self, unwanted: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.sparsity.add_unwanted(unwanted);
+        self
+    }
+
     pub fn kind(&self) -> &RepoKind {
         &self.kind
     }
@@ -56,8 +182,9 @@ impl Git {
 
     pub fn clone_with_progress(&self, bar: &ProgressBar) -> Result<()> {
         let style = ProgressStyle::with_template(
-            "{wide_msg} {bytes:>10} /{total_bytes:>10}  {bytes_per_sec:>10.magenta}  {elapsed_precise:.green}  [{bar:<50.yellow/blue}]",
-        ).unwrap()
+            "{elapsed_precise:.green}  {msg:<50}  [{wide_bar:.yellow/blue}]",
+        )
+        .unwrap()
         .progress_chars("-Cco.");
         bar.set_style(style);
         bar.set_message(self.url.clone());
@@ -85,12 +212,22 @@ impl Git {
         let repo = RepoBuilder::new()
             .bare(self.kind.is_bare())
             .fetch_options(fo)
-            .clone(self.url.as_ref(), self.path.as_ref())?;
+            .clone(&self.url, self.path.as_ref())?;
 
         if matches!(self.kind, RepoKind::BareAlias(..) | RepoKind::Bare) {
             let mut config = repo.config()?;
             config.set_str("status.showUntrackedFiles", "no")?;
             config.set_str("core.sparseCheckout", "true")?;
+        }
+
+        Ok(())
+    }
+
+    pub fn deploy(&self) -> Result<()> {
+        self.sparsity.exclude_unwanted()?;
+        let output = self.bincall(["checkout"])?;
+        if !output.is_empty() {
+            log::info!("deploy {}:\n{output}", self.path.display());
         }
 
         Ok(())
@@ -170,10 +307,7 @@ impl Prompter for ProgressBarAuth {
         let prompt = || -> Option<(String, String)> {
             log::info!("Authentication required for {url}");
             let username = Text::new("username").prompt().unwrap();
-            let password = Password::new("password")
-                .without_confirmation()
-                .prompt()
-                .unwrap();
+            let password = Password::new("password").without_confirmation().prompt().unwrap();
             Some((username, password))
         };
 
@@ -191,10 +325,7 @@ impl Prompter for ProgressBarAuth {
     ) -> Option<String> {
         let prompt = || -> Option<String> {
             log::info!("Authentication required for {url} for user {username}");
-            let password = Password::new("password")
-                .without_confirmation()
-                .prompt()
-                .unwrap();
+            let password = Password::new("password").without_confirmation().prompt().unwrap();
             Some(password)
         };
 
@@ -211,10 +342,7 @@ impl Prompter for ProgressBarAuth {
     ) -> Option<String> {
         let prompt = || -> Option<String> {
             log::info!("Authentication required for {}", private_key_path.display());
-            let password = Password::new("password")
-                .without_confirmation()
-                .prompt()
-                .unwrap();
+            let password = Password::new("password").without_confirmation().prompt().unwrap();
             Some(password)
         };
 
@@ -222,6 +350,43 @@ impl Prompter for ProgressBarAuth {
             ProgressBarKind::MultiBar(bar) => bar.suspend(prompt),
             ProgressBarKind::SingleBar(bar) => bar.suspend(prompt),
         }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct SparseManip {
+    sparse_path: PathBuf,
+    rules: Vec<String>,
+}
+
+impl SparseManip {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn set_sparse_path(&mut self, path: &Path, kind: &RepoKind) {
+        self.sparse_path = match kind {
+            RepoKind::Normal => path.join(".git/info/sparse_checkout"),
+            RepoKind::Bare | RepoKind::BareAlias(_) => path.join("info/sparse-checkout"),
+        };
+    }
+
+    pub fn add_unwanted(&mut self, unwanted: impl IntoIterator<Item = impl Into<String>>) {
+        let mut vec = Vec::new();
+        vec.extend(unwanted.into_iter().map(Into::into));
+        self.rules = vec;
+    }
+
+    pub fn exclude_unwanted(&self) -> Result<()> {
+        let excludes: String = self.rules.iter().fold(String::new(), |mut acc, u| {
+            writeln!(&mut acc, "!{}", u).unwrap();
+            acc
+        });
+
+        let mut file = File::create(&self.sparse_path)?;
+        file.write_all(format!("/*\n{excludes}").as_bytes())?;
+
+        Ok(())
     }
 }
 
