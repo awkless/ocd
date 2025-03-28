@@ -16,11 +16,11 @@ use inquire::{Password, Text};
 use std::{
     ffi::{OsStr, OsString},
     fmt::Write as FmtWrite,
+    fs::File,
+    io::Write as IoWrite,
     path::{Path, PathBuf},
     process::{Command, Output},
-    io::Write as IoWrite,
     sync::{Arc, Mutex},
-    fs::File,
     time::{Duration, Instant},
 };
 
@@ -33,9 +33,7 @@ impl RootRepo {
         let git = Git::new("root", dirs)
             .with_url(url.as_ref())
             .with_kind(RepoKind::Bare)
-            .with_auth_prompt(ProgressBarAuth::new(ProgressBarKind::SingleBar(
-                bar.clone(),
-            )));
+            .with_auth_prompt(ProgressBarAuth::new(ProgressBarKind::SingleBar(bar.clone())));
         git.clone_with_progress(&bar)?;
         bar.finish_and_clear();
 
@@ -114,7 +112,13 @@ impl MultiNodeClone {
                 let results = results.clone();
 
                 async move {
-                    let result = tokio::spawn(Self::clone_task(node, bar)).await;
+                    let result = tokio::spawn(async move {
+                        node.0
+                            .clone_with_progress(&bar)
+                            .with_context(|| format!("Failed to clone {}", node.0.url))
+                    })
+                    .await;
+
                     let mut guard = results.lock().unwrap();
                     guard.push(result);
                     drop(guard);
@@ -130,10 +134,6 @@ impl MultiNodeClone {
         let _ = results.into_iter().flatten().bcollect::<Vec<_>>()?;
 
         Ok(())
-    }
-
-    async fn clone_task(node: NodeRepo, bar: ProgressBar) -> Result<()> {
-        node.0.clone_with_progress(&bar).with_context(|| format!("Failed to clone {}", node.0.url))
     }
 }
 
@@ -361,7 +361,7 @@ pub(crate) struct SparseManip {
 
 impl SparseManip {
     pub fn new() -> Self {
-        Default::default()
+        SparseManip::default()
     }
 
     pub fn set_sparse_path(&mut self, path: &Path, kind: &RepoKind) {
@@ -379,7 +379,7 @@ impl SparseManip {
 
     pub fn exclude_unwanted(&self) -> Result<()> {
         let excludes: String = self.rules.iter().fold(String::new(), |mut acc, u| {
-            writeln!(&mut acc, "!{}", u).unwrap();
+            writeln!(&mut acc, "!{u}").unwrap();
             acc
         });
 

@@ -78,20 +78,12 @@ async fn run() -> Result<ExitCode> {
     let dirs = DirLayout::new()?;
     match cli.command {
         Command::Clone(args) => {
-            let root = match RootRepo::new_clone(args.url, &dirs) {
-                Ok(root) => root,
-                Err(err) => {
-                    remove_dir_all(dirs.data())?;
-                    return Err(err);
-                }
-            };
-            let cluster = match root.get_cluster() {
-                Ok(cluster) => cluster,
-                Err(err) => {
-                    remove_dir_all(dirs.data())?;
-                    return Err(err);
-                }
-            };
+            let root = RootRepo::new_clone(args.url, &dirs).inspect_err(|_| {
+                remove_dir_all(dirs.data()).ok();
+            })?;
+            let cluster = root.get_cluster().inspect_err(|_| {
+                remove_dir_all(dirs.data()).ok();
+            })?;
 
             let multi_clone = MultiNodeClone::new(&cluster, &dirs);
             multi_clone.clone_all(args.jobs).await?;
