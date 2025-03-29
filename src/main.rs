@@ -17,6 +17,7 @@ use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use std::{fs::remove_dir_all, process};
 
+/// Command-line interface of OCD tool.
 #[derive(Debug, Parser)]
 #[command(
     about,
@@ -32,6 +33,7 @@ pub struct Cli {
     pub command: Command,
 }
 
+/// Full command set.
 #[derive(Debug, Subcommand)]
 pub enum Command {
     #[command(override_usage = "ocd clone [options] <url>")]
@@ -94,9 +96,13 @@ async fn run() -> Result<ExitCode> {
     Ok(ExitCode::Success)
 }
 
+/// Standard exit codes.
 #[derive(Debug)]
 pub enum ExitCode {
+    /// Nothing went wrong.
     Success,
+
+    /// SNAFU!
     Failure,
 }
 
