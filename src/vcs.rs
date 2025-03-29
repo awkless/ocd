@@ -1,6 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT or Apache-2.0
 
+//! Version control system management.
+//!
+//! This module provides APIs to manipulate version control repository data. Currently, OCD mainly
+//! targets Git as the primary VCS of choice. Thus, the code here makes it easy to manipulate Git
+//! repository data in a fashion that makes sense to OCD's codebase.
+
 use crate::{
     cluster::{Cluster, Node},
     fs::DirLayout,
@@ -24,10 +30,19 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Manage root repository.
 #[derive(Debug, Default, Clone)]
 pub struct RootRepo(Git);
 
 impl RootRepo {
+    /// Construct new root repository by cloning it.
+    ///
+    /// Will automatically set configuration settings based on cluster configuration file.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if given invalid URL, or repository does not contain a cluster configuration file
+    /// to deploy.
     pub fn new_clone(url: impl AsRef<str>, dirs: &DirLayout) -> Result<Self> {
         let bar = ProgressBar::no_length();
         let git = Git::new("root", dirs)
@@ -46,6 +61,11 @@ impl RootRepo {
         Ok(root)
     }
 
+    /// Extract cluster configuration file.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if repository does not contain a cluster configuration file.
     pub fn get_cluster(&self) -> Result<Cluster> {
         self.0
             .bincall(["cat-file", "-p", "@:cluster.toml"])?
@@ -53,15 +73,29 @@ impl RootRepo {
             .parse::<Cluster>()
     }
 
+    /// Deploy root repository to worktree alias.
+    ///
+    /// Excludes unwanted files from deployment.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if root repository cannot be deployed to worktree alias, or
+    /// sparse checkout fails to exclude unwanted files.
     pub fn deploy(&self) -> Result<()> {
         self.0.deploy()
     }
 }
 
+/// Manage node repositories.
 #[derive(Debug, Default, Clone)]
 pub struct NodeRepo(Git);
 
 impl NodeRepo {
+    /// Construct new node repository from [`Node`].
+    ///
+    /// Extracts deserialized node data needed to manage a node repository.
+    ///
+    /// [`Node`]: crate::cluster::Node
     pub fn new(name: &str, node: &Node, dirs: &DirLayout) -> Self {
         let kind = if node.bare_alias {
             let path = node.worktree.as_ref().map_or(dirs.home(), |p| p.as_ref());
@@ -75,18 +109,25 @@ impl NodeRepo {
         Self(git)
     }
 
-    pub fn with_progress_bar(mut self, kind: ProgressBarKind) -> Self {
+    /// Attch progress bar.
+    ///
+    /// Mainly used for keep track of clone progress with credential prompting.
+    pub(crate) fn with_progress_bar(mut self, kind: ProgressBarKind) -> Self {
         self.0 = self.0.with_auth_prompt(ProgressBarAuth::new(kind));
         self
     }
 }
 
+/// Clone all nodes in cluster asynchronously.
 pub struct MultiNodeClone {
     nodes: Vec<NodeRepo>,
     multi_bar: MultiProgress,
 }
 
 impl MultiNodeClone {
+    /// Construct new multi-node clone type.
+    ///
+    /// Extracts all nodes from cluster to clone them with progress bar support.
     pub fn new(cluster: &Cluster, dirs: &DirLayout) -> Self {
         let multi_bar = MultiProgress::new();
         let nodes: Vec<NodeRepo> = cluster
@@ -100,6 +141,16 @@ impl MultiNodeClone {
         Self { nodes, multi_bar }
     }
 
+    /// Clone all node repositories asynchronously.
+    ///
+    /// Shows clone progress for each clone task. Clears each progress bar after a task is
+    /// finished. Tasks may block if user needs to enter their credentials.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if any clone task fails. However, it will not cancel any active clone tasks that
+    /// are not failing. Instead it will collect all failed tasks and report them in one shot after
+    /// attempting to clone all node repositories.
     pub async fn clone_all(self, jobs: Option<usize>) -> Result<()> {
         let mut bars = Vec::new();
         let results = Arc::new(Mutex::new(Vec::new()));
@@ -137,6 +188,7 @@ impl MultiNodeClone {
     }
 }
 
+/// Git repository manager.
 #[derive(Debug, Default, Clone)]
 pub struct Git {
     path: PathBuf,
@@ -147,39 +199,64 @@ pub struct Git {
 }
 
 impl Git {
+    /// Construct new Git repository manager to manage target repository by name.
     pub fn new(repo: &str, dirs: &DirLayout) -> Self {
         Self { path: dirs.data().join(repo), ..Default::default() }
     }
 
+    /// Set repository kind for repository.
+    ///
+    /// Determines how a repository will be managed and deployed. This method also sets the
+    /// sparsity file path as well.
     pub fn with_kind(mut self, kind: RepoKind) -> Self {
         self.kind = kind;
         self.sparsity.set_sparse_path(self.path.as_ref(), &self.kind);
         self
     }
 
+    /// Set URL to clone repository from.
     pub fn with_url(mut self, url: impl Into<String>) -> Self {
         self.url = url.into();
         self
     }
 
-    pub fn with_auth_prompt(mut self, prompter: impl Prompter + Clone + 'static) -> Self {
+    /// Set authentication prompter.
+    ///
+    /// Typically, the prompter being used should block progress bar output to prevent zombie lines.
+    pub(crate) fn with_auth_prompt(mut self, prompter: impl Prompter + Clone + 'static) -> Self {
         self.auth = self.auth.set_prompter(prompter);
         self
     }
 
-    pub fn with_excludes(mut self, unwanted: impl IntoIterator<Item = impl Into<String>>) -> Self {
+    /// Set exclude files.
+    ///
+    /// Add a list of files to exclude from sparse checkout upon deployment of repository.
+    pub(crate) fn with_excludes(mut self, unwanted: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.sparsity.add_unwanted(unwanted);
         self
     }
 
+    /// Get repository kind.
     pub fn kind(&self) -> &RepoKind {
         &self.kind
     }
 
+    /// Get URL to clone from.
     pub fn url(&self) -> &str {
         &self.url
     }
 
+    /// Clone repository with progress bar output.
+    ///
+    /// Performs Git clone without system call, with a progress bar to interactively show how long
+    /// the clone is taking for the user. Method may prompt user for credentials if it cannot be
+    /// automatically determined. This prompt may occur through external program or through the
+    /// current terminal the user is running OCD on.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if repository cannot be cloned for whatever reason. May also fail if user does
+    /// not provide valid credentials when prompted.
     pub fn clone_with_progress(&self, bar: &ProgressBar) -> Result<()> {
         let style = ProgressStyle::with_template(
             "{elapsed_precise:.green}  {msg:<50}  [{wide_bar:.yellow/blue}]",
@@ -223,6 +300,13 @@ impl Git {
         Ok(())
     }
 
+    /// Deploy repository to target worktree alias.
+    ///
+    /// Will exclude unwanted files through sparse checkout.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if Git checkout fails, or writing sparsity rules fails.
     pub fn deploy(&self) -> Result<()> {
         self.sparsity.exclude_unwanted()?;
         let output = self.bincall(["checkout"])?;
@@ -233,6 +317,14 @@ impl Git {
         Ok(())
     }
 
+    /// Make system call to Git binary.
+    ///
+    /// Returns data sent to stdout and stderr as a loggable string.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
+    /// itself.
     pub fn bincall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<String> {
         let gitdir: OsString =
             if self.kind == RepoKind::Normal { self.path.join(".git") } else { self.path.clone() }
@@ -255,13 +347,17 @@ impl Git {
     }
 }
 
+/// Determine how to treat repository.
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub enum RepoKind {
+    /// Normal Git repository whose gitdir and worktree point to same path.
     #[default]
     Normal,
 
+    /// Normal bare Git repository with no worktree.
     Bare,
 
+    /// Bare Git repository that uses a target directory as an alias for a worktree.
     BareAlias(AliasDir),
 }
 
@@ -274,26 +370,34 @@ impl RepoKind {
     }
 }
 
+/// Alias directory path representation.
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct AliasDir(pub PathBuf);
 
 impl AliasDir {
+    /// Contruct new alias directory path.
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self(path.into())
     }
 
+    /// Convert path to [`OsString`] lossy.
     pub fn to_os_string(&self) -> OsString {
         OsString::from(self.0.to_string_lossy().into_owned())
     }
 }
 
+/// Manage authentication prompt for progress bars.
+///
+/// Can handle single and multi progress bars based on [`ProgressBarKind`]. For any prompt to the
+/// terminal, all progress bars will be blocked to prevent the creation of zombie lines.
 #[derive(Clone)]
-struct ProgressBarAuth {
+pub(crate) struct ProgressBarAuth {
     bar_kind: ProgressBarKind,
 }
 
 impl ProgressBarAuth {
-    fn new(bar_kind: ProgressBarKind) -> Self {
+    /// Construct new authentication prompt progress bar handler.
+    pub(crate) fn new(bar_kind: ProgressBarKind) -> Self {
         Self { bar_kind }
     }
 }
@@ -353,6 +457,17 @@ impl Prompter for ProgressBarAuth {
     }
 }
 
+/// Progress bar handler kind.
+#[derive(Clone)]
+pub(crate) enum ProgressBarKind {
+    /// Need to handle only one progress bar.
+    SingleBar(ProgressBar),
+
+    /// Need to handle more than one progress bar.
+    MultiBar(MultiProgress),
+}
+
+/// Sparse checkout manipulation.
 #[derive(Debug, Default, Clone)]
 pub(crate) struct SparseManip {
     sparse_path: PathBuf,
@@ -360,24 +475,32 @@ pub(crate) struct SparseManip {
 }
 
 impl SparseManip {
-    pub fn new() -> Self {
+    /// Construct new empty sparse checkout manipulator.
+    pub(crate) fn new() -> Self {
         SparseManip::default()
     }
 
-    pub fn set_sparse_path(&mut self, path: &Path, kind: &RepoKind) {
+    /// Set expected path to sparse file.
+    pub(crate) fn set_sparse_path(&mut self, path: &Path, kind: &RepoKind) {
         self.sparse_path = match kind {
             RepoKind::Normal => path.join(".git/info/sparse_checkout"),
             RepoKind::Bare | RepoKind::BareAlias(_) => path.join("info/sparse-checkout"),
         };
     }
 
-    pub fn add_unwanted(&mut self, unwanted: impl IntoIterator<Item = impl Into<String>>) {
+    /// Add list of unwanted files to exclude from sparse checkout.
+    pub(crate) fn add_unwanted(&mut self, unwanted: impl IntoIterator<Item = impl Into<String>>) {
         let mut vec = Vec::new();
         vec.extend(unwanted.into_iter().map(Into::into));
         self.rules = vec;
     }
 
-    pub fn exclude_unwanted(&self) -> Result<()> {
+    /// Write sparsity rules to sparse checkout excluding unwanted files.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if sparsity rules cannot be written to sparse file for whatever reason.
+    pub(crate) fn exclude_unwanted(&self) -> Result<()> {
         let excludes: String = self.rules.iter().fold(String::new(), |mut acc, u| {
             writeln!(&mut acc, "!{u}").unwrap();
             acc
@@ -388,16 +511,6 @@ impl SparseManip {
 
         Ok(())
     }
-}
-
-/// Progress bar handler kind.
-#[derive(Clone)]
-pub(crate) enum ProgressBarKind {
-    /// Need to handle only one progress bar.
-    SingleBar(ProgressBar),
-
-    /// Need to handle more than one progress bar.
-    MultiBar(MultiProgress),
 }
 
 fn syscall(
