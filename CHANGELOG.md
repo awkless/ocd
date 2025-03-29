@@ -6,10 +6,42 @@ SPDX-License-Identifier: MIT or Apache-2.0
 
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
-## [0.2.0](https://github.com/awkless/ocd/compare/v0.1.0..0.2.0) - 2025-03-23
+## [0.3.0](https://github.com/awkless/ocd/compare/v0.2.0..0.3.0) - 2025-03-29
 
 ### Documentation
 
+- *(bin)* Add a few doc-strings - ([882ecea](https://github.com/awkless/ocd/commit/882ecea025da131fc17e76b25b1a6152e3b39675))
+- *(cluster)* Add doc-comments to public API - ([58a6af1](https://github.com/awkless/ocd/commit/58a6af120fe088b416678d90a583d44da9c48cdd))
+- *(fs)* Add documentation to public APIs - ([d833e28](https://github.com/awkless/ocd/commit/d833e28aae84059784caf9b04ea28a3c448824d6))
+- *(vcs)* Add doc-comment strings to API - ([191ff35](https://github.com/awkless/ocd/commit/191ff35d211380455fa4cbe430cc5d9ec16a6fa7))
+
+### Features
+
+- *(bin)* Add clone command - ([c10b309](https://github.com/awkless/ocd/commit/c10b3091f6b624f4c460c93033d2ccb176f1792c))
+- *(cluster)* Make `Node::url` mandatory - ([e259491](https://github.com/awkless/ocd/commit/e259491d0e35c2f397cc906225475babcfcb1074))
+- *(fs)* Add `DirLayout` type - ([c54d4eb](https://github.com/awkless/ocd/commit/c54d4eb853c8f61a0c8b06095ea7e69ea9f839d3))
+- *(fs)* Add `read_config` - ([42994a7](https://github.com/awkless/ocd/commit/42994a7fbad7c07bc8b5ac74a6db7267e942f024))
+- *(vcs)* Add `Git` type with `Git::bincall` - ([d177ef8](https://github.com/awkless/ocd/commit/d177ef8977dfef4fd6a0d18e5481e97fff4b9441))
+- *(vcs)* Add `Git::clone_with_progress` - ([4862035](https://github.com/awkless/ocd/commit/486203546a6ee075137a00a36861b2aef22a961c))
+- *(vcs)* Add functionality to implement clone command - ([45b15c5](https://github.com/awkless/ocd/commit/45b15c54a9212da5777be339aee406ad8eb1081a))
+
+### Miscellaneous Chores
+
+- *(cargo)* Bump to version 0.3.0 - ([a72b370](https://github.com/awkless/ocd/commit/a72b3705d174e33541a7e5c1ec0dc730a815a5b6))
+
+### Refactoring
+
+- *(cluster)* Make `Cluster::root` `Cluster::nodes` public - ([7fb7156](https://github.com/awkless/ocd/commit/7fb7156f63439ae9b4a60d99754eb8b2cecbdf3b))
+- Thanks clippy - ([54e0619](https://github.com/awkless/ocd/commit/54e0619e12a7a4aeb15be0e853fd53325171bcde))
+
+### Style
+
+- *(fs)* Thanks rustfmt - ([0305823](https://github.com/awkless/ocd/commit/0305823933ac9f5e5b7c44d03f74da867602bcc7))
+## [0.2.0](https://github.com/awkless/ocd/compare/v0.1.0..v0.2.0) - 2025-03-23
+
+### Documentation
+
+- *(changelog)* Document version 0.2.0 - ([d3ee39a](https://github.com/awkless/ocd/commit/d3ee39ae430992a45a87ade623d1c2d7ea79a764))
 - *(contrib)* Use `refactor` instead of `ref` - ([790a3e6](https://github.com/awkless/ocd/commit/790a3e6904cd1b9cd8fc0812ae4b49616b72a5fe))
 
 ### Features
