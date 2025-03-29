@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file. See [conven
 ### Documentation
 
 - *(bin)* Add a few doc-strings - ([882ecea](https://github.com/awkless/ocd/commit/882ecea025da131fc17e76b25b1a6152e3b39675))
+- *(changelog)* Document version 0.3.0 - ([3415d37](https://github.com/awkless/ocd/commit/3415d3748a4f1f3c24d828b93e3d2d356740fdf0))
 - *(cluster)* Add doc-comments to public API - ([58a6af1](https://github.com/awkless/ocd/commit/58a6af120fe088b416678d90a583d44da9c48cdd))
 - *(fs)* Add documentation to public APIs - ([d833e28](https://github.com/awkless/ocd/commit/d833e28aae84059784caf9b04ea28a3c448824d6))
 - *(vcs)* Add doc-comment strings to API - ([191ff35](https://github.com/awkless/ocd/commit/191ff35d211380455fa4cbe430cc5d9ec16a6fa7))
@@ -37,6 +38,7 @@ All notable changes to this project will be documented in this file. See [conven
 ### Style
 
 - *(fs)* Thanks rustfmt - ([0305823](https://github.com/awkless/ocd/commit/0305823933ac9f5e5b7c44d03f74da867602bcc7))
+- *(vcs)* Thanks rustfmt - ([f9aee6c](https://github.com/awkless/ocd/commit/f9aee6cc1658c0449862d394773a4eb45d884641))
 ## [0.2.0](https://github.com/awkless/ocd/compare/v0.1.0..v0.2.0) - 2025-03-23
 
 ### Documentation

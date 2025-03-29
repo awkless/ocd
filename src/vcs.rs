@@ -231,7 +231,10 @@ impl Git {
     /// Set exclude files.
     ///
     /// Add a list of files to exclude from sparse checkout upon deployment of repository.
-    pub(crate) fn with_excludes(mut self, unwanted: impl IntoIterator<Item = impl Into<String>>) -> Self {
+    pub(crate) fn with_excludes(
+        mut self,
+        unwanted: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
         self.sparsity.add_unwanted(unwanted);
         self
     }
