@@ -8,14 +8,15 @@ mod fs;
 mod vcs;
 
 use crate::{
-    fs::DirLayout,
-    vcs::{MultiNodeClone, RootRepo},
+    fs::{read_config, DirLayout},
+    vcs::{MultiNodeClone, RootRepo, NodeRepo},
+    cluster::Cluster,
 };
 
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use std::{fs::remove_dir_all, process};
+use std::{ffi::OsString, fs::remove_dir_all, process};
 
 /// Command-line interface of OCD tool.
 #[derive(Debug, Parser)]
@@ -38,6 +39,9 @@ pub struct Cli {
 pub enum Command {
     #[command(override_usage = "ocd clone [options] <url>")]
     Clone(CloneOptions),
+
+    #[command(external_subcommand)]
+    Git(Vec<OsString>),
 }
 
 /// Clone existing cluster.
@@ -90,6 +94,24 @@ async fn run() -> Result<ExitCode> {
             let multi_clone = MultiNodeClone::new(&cluster, &dirs);
             multi_clone.clone_all(args.jobs).await?;
             root.deploy()?;
+        }
+        Command::Git(args) => {
+            let cluster: Cluster = read_config("cluster.toml", &dirs)?;
+            let mut node_names = args[0].to_string_lossy().into_owned();
+            node_names.retain(|c| !c.is_whitespace());
+            let mut node_names: Vec<&str> = node_names.split(',').collect();
+            node_names.dedup();
+
+            for node_name in node_names {
+                if node_name == "root" {
+                    let root = RootRepo::from_cluster(&cluster, &dirs);
+                    root.gitcall(args[1..].to_vec())?;
+                } else {
+                    let node = cluster.get_node(node_name)?;
+                    let node = NodeRepo::new(node_name, node, &dirs);
+                    node.gitcall(args[1..].to_vec())?;
+                }
+            }
         }
     }
 
