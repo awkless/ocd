@@ -6,7 +6,25 @@ SPDX-License-Identifier: MIT or Apache-2.0
 
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
-## [0.3.0](https://github.com/awkless/ocd/compare/v0.2.0..0.3.0) - 2025-03-29
+## [0.4.0](https://github.com/awkless/ocd/compare/v0.3.0..0.4.0) - 2025-03-30
+
+### Features
+
+- *(bin)* Add git shortcut command - ([a79eb9f](https://github.com/awkless/ocd/commit/a79eb9f3e356eea9a45f702c5353d335fb049804))
+- *(vcs)* Allow `NodeRepo` and `RootRepo` to make calls to git - ([28a5daa](https://github.com/awkless/ocd/commit/28a5daaa085969447fd9863aa8a7a779af38c413))
+
+### Miscellaneous Chores
+
+- *(cargo)* Bump version and optimize release size - ([2e53e0a](https://github.com/awkless/ocd/commit/2e53e0a5205708ee35be843242a0d6cc1dafa8eb))
+
+### Refactoring
+
+- *(cluster)* Thanks clippy - ([343e901](https://github.com/awkless/ocd/commit/343e90132e554533bdd8559ed662c1e8867ab785))
+
+### Style
+
+- Thanks rustfmt - ([86279b1](https://github.com/awkless/ocd/commit/86279b153e9682703dff147a00707f2ccb45fef1))
+## [0.3.0](https://github.com/awkless/ocd/compare/v0.2.0..v0.3.0) - 2025-03-29
 
 ### Documentation
 
@@ -38,7 +56,7 @@ All notable changes to this project will be documented in this file. See [conven
 ### Style
 
 - *(fs)* Thanks rustfmt - ([0305823](https://github.com/awkless/ocd/commit/0305823933ac9f5e5b7c44d03f74da867602bcc7))
-- *(vcs)* Thanks rustfmt - ([f9aee6c](https://github.com/awkless/ocd/commit/f9aee6cc1658c0449862d394773a4eb45d884641))
+- *(vcs)* Thanks rustfmt - ([718f7d1](https://github.com/awkless/ocd/commit/718f7d1c2cfa01f1d0f4a11eed99102e279f19ef))
 ## [0.2.0](https://github.com/awkless/ocd/compare/v0.1.0..v0.2.0) - 2025-03-23
 
 ### Documentation
