@@ -214,7 +214,7 @@ impl std::str::FromStr for Cluster {
             HashMap::new()
         };
 
-        let mut cluster = Self { document, root, nodes };
+        let mut cluster = Self { root, nodes, document };
         cluster.acyclic_check()?;
         cluster.expand_worktrees()?;
 
