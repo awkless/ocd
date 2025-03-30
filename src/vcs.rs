@@ -61,6 +61,20 @@ impl RootRepo {
         Ok(root)
     }
 
+    /// Construct new root repository from existing cluster.
+    pub fn from_cluster(cluster: &Cluster, dirs: &DirLayout) -> Self {
+        let worktree = cluster
+            .root
+            .worktree
+            .as_ref()
+            .map_or(dirs.config(), |p| p.as_ref());
+        let git = Git::new("root", dirs)
+            .with_kind(RepoKind::BareAlias(AliasDir::new(worktree)))
+            .with_excludes(cluster.root.excludes.iter().flatten());
+
+        Self(git)
+    }
+
     /// Extract cluster configuration file.
     ///
     /// ## Errors
@@ -83,6 +97,23 @@ impl RootRepo {
     /// sparse checkout fails to exclude unwanted files.
     pub fn deploy(&self) -> Result<()> {
         self.0.deploy()
+    }
+
+    /// Call Git binary.
+    ///
+    /// Logs any data written to stdout or stderr.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
+    /// itself.
+    pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
+        let output = self.0.bincall(args)?;
+        if !output.is_empty() {
+            log::info!("{}\n{output}", self.0.path().display());
+        }
+
+        Ok(())
     }
 }
 
@@ -115,6 +146,23 @@ impl NodeRepo {
     pub(crate) fn with_progress_bar(mut self, kind: ProgressBarKind) -> Self {
         self.0 = self.0.with_auth_prompt(ProgressBarAuth::new(kind));
         self
+    }
+
+    /// Call Git binary.
+    ///
+    /// Logs any data written to stdout or stderr.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
+    /// itself.
+    pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
+        let output = self.0.bincall(args)?;
+        if !output.is_empty() {
+            log::info!("{}\n{output}", self.0.path().display());
+        }
+
+        Ok(())
     }
 }
 
@@ -247,6 +295,11 @@ impl Git {
     /// Get URL to clone from.
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    /// Get path to repository.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     /// Clone repository with progress bar output.
@@ -529,6 +582,7 @@ fn syscall(
     if !output.status.success() {
         return Err(anyhow!("{:?} failed\n{message}", cmd.as_ref()));
     }
+
     Ok(message)
 }
 
