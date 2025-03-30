@@ -8,9 +8,9 @@ mod fs;
 mod vcs;
 
 use crate::{
-    fs::{read_config, DirLayout},
-    vcs::{MultiNodeClone, RootRepo, NodeRepo},
     cluster::Cluster,
+    fs::{read_config, DirLayout},
+    vcs::{MultiNodeClone, NodeRepo, RootRepo},
 };
 
 use anyhow::Result;

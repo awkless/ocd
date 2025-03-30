@@ -63,11 +63,7 @@ impl RootRepo {
 
     /// Construct new root repository from existing cluster.
     pub fn from_cluster(cluster: &Cluster, dirs: &DirLayout) -> Self {
-        let worktree = cluster
-            .root
-            .worktree
-            .as_ref()
-            .map_or(dirs.config(), |p| p.as_ref());
+        let worktree = cluster.root.worktree.as_ref().map_or(dirs.config(), |p| p.as_ref());
         let git = Git::new("root", dirs)
             .with_kind(RepoKind::BareAlias(AliasDir::new(worktree)))
             .with_excludes(cluster.root.excludes.iter().flatten());
