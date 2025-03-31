@@ -4,12 +4,12 @@
 #![allow(dead_code)]
 
 mod cluster;
-mod fs;
+mod utils;
 mod vcs;
 
 use crate::{
     cluster::Cluster,
-    fs::{read_config, DirLayout},
+    utils::{read_config, DirLayout},
     vcs::{MultiNodeClone, NodeRepo, RootRepo},
 };
 

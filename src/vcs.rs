@@ -9,7 +9,7 @@
 
 use crate::{
     cluster::{Cluster, Node},
-    fs::DirLayout,
+    utils::DirLayout,
 };
 
 use anyhow::{anyhow, Context, Result};

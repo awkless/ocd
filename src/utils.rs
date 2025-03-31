@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-//! File system I/O.
+//! General utilities.
 //!
-//! This module provides utilities to manage file system I/O operations for the OCD tool. Reading,
-//! writing, and determining valid paths for file data itself is all provided here.
+//! This module provides general miscellaneous utilities to make life easier. These utilities where
+//! placed here either because they did not seem to fit the purpose of other modules, but were
+//! still important to have around.
 
 use anyhow::{anyhow, Result};
 use mkdirp::mkdirp;
