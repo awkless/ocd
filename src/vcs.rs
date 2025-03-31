@@ -61,6 +61,28 @@ impl RootRepo {
         Ok(root)
     }
 
+    /// Construct new root repository by opening it.
+    ///
+    /// Will automatically set configuration settings based on cluster configuration file.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if root repository does not exist for some reason.
+    pub fn new_open(dirs: &DirLayout) -> Result<Self> {
+        if !dirs.data().join("root").exists() {
+            return Err(anyhow!("Root does not exist"));
+        }
+
+        let git = Git::new("root", dirs).with_kind(RepoKind::Bare);
+        let mut root = Self(git);
+        let cluster = root.get_cluster()?;
+        let worktree = cluster.root.worktree.unwrap_or(dirs.config().to_path_buf());
+        root.0 = root.0.with_kind(RepoKind::BareAlias(AliasDir::new(worktree)));
+        root.0 = root.0.with_excludes(cluster.root.excludes.iter().flatten());
+
+        Ok(root)
+    }
+
     /// Construct new root repository from existing cluster.
     pub fn from_cluster(cluster: &Cluster, dirs: &DirLayout) -> Self {
         let worktree = cluster.root.worktree.as_ref().map_or(dirs.config(), |p| p.as_ref());
@@ -93,6 +115,19 @@ impl RootRepo {
     /// sparse checkout fails to exclude unwanted files.
     pub fn deploy(&self) -> Result<()> {
         self.0.deploy()
+    }
+
+    /// Deploy root repository to worktree alias in full.
+    ///
+    /// Will include all files of root repository.
+    ///
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if root repository cannot be deployed to worktree alias, or
+    /// sparse checkout fails to exclude unwanted files.
+    pub fn deploy_all(&self) -> Result<()> {
+        self.0.deploy_all()
     }
 
     /// Call Git binary.
@@ -142,6 +177,31 @@ impl NodeRepo {
     pub(crate) fn with_progress_bar(mut self, kind: ProgressBarKind) -> Self {
         self.0 = self.0.with_auth_prompt(ProgressBarAuth::new(kind));
         self
+    }
+
+    /// Deploy node repository to worktree alias.
+    ///
+    /// Excludes unwanted files from deployment.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if root repository cannot be deployed to worktree alias, or
+    /// sparse checkout fails to exclude unwanted files.
+    pub fn deploy(&self) -> Result<()> {
+        self.0.deploy()
+    }
+
+    /// Deploy node repository to worktree alias in full.
+    ///
+    /// Will include all files of node repository.
+    ///
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if root repository cannot be deployed to worktree alias, or
+    /// sparse checkout fails to exclude unwanted files.
+    pub fn deploy_all(&self) -> Result<()> {
+        self.0.deploy_all()
     }
 
     /// Call Git binary.
@@ -369,6 +429,23 @@ impl Git {
         Ok(())
     }
 
+    /// Deploy full repository to target worktree alias.
+    ///
+    /// Includes all files in repository index, included unwanted files.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if Git checkout fails, or writing sparsity rules fails.
+    pub fn deploy_all(&self) -> Result<()> {
+        self.sparsity.include_all()?;
+        let output = self.bincall(["checkout"])?;
+        if !output.is_empty() {
+            log::info!("deploy {}:\n{output}", self.path.display());
+        }
+
+        Ok(())
+    }
+
     /// Make system call to Git binary.
     ///
     /// Returns data sent to stdout and stderr as a loggable string.
@@ -561,6 +638,17 @@ impl SparseManip {
         let mut file = File::create(&self.sparse_path)?;
         file.write_all(format!("/*\n{excludes}").as_bytes())?;
 
+        Ok(())
+    }
+
+    /// Write sparsity rules to include all files of index.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if sparsity rules cannot be written to sparse file for whatever reason.
+    pub(crate) fn include_all(&self) -> Result<()> {
+        let mut file = File::create(&self.sparse_path)?;
+        file.write_all("/*".as_bytes())?;
         Ok(())
     }
 }
