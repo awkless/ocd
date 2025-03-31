@@ -93,3 +93,59 @@ where
     let config: C = buffer.parse()?;
     Ok(config)
 }
+
+/// Use Unix-like glob pattern matching.
+///
+/// Will match a set of patterns to a given set of entries. Whatever is matched is returned as a
+/// new vector to operate with.
+///
+/// ## Errors
+///
+/// Will fail if one of the given list of patterns is invalid.
+pub fn glob_match(patterns: &Vec<String>, entries: &Vec<String>) -> Result<Vec<String>> {
+    let mut matched = Vec::new();
+    for entry in entries {
+        for pattern in patterns {
+            let result = glob::Pattern::new(pattern)?;
+            if result.matches(entry) {
+                matched.push(entry.to_string());
+            }
+        }
+    }
+
+    Ok(matched)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use pretty_assertions::assert_eq;
+
+    #[track_caller]
+    fn check_glob_match(
+        patterns: impl IntoIterator<Item = impl Into<String>>,
+        entries: impl IntoIterator<Item = impl Into<String>>,
+        expect: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Result<()> {
+        let patterns = patterns.into_iter().map(Into::into).collect::<Vec<String>>();
+        let entries = entries.into_iter().map(Into::into).collect::<Vec<String>>();
+        let mut expect = expect.into_iter().map(Into::into).collect::<Vec<String>>();
+        expect.sort();
+
+        let mut result = glob_match(&patterns, &entries)?;
+        result.sort();
+        assert_eq!(result, expect);
+
+        Ok(())
+    }
+
+    #[test]
+    fn smoke_glob_match() -> Result<()> {
+        check_glob_match(["*"], ["foo", "bar", "baz"], ["foo", "bar", "baz"])?;
+        check_glob_match(["*sh"], ["sh", "bash", "yash", "vim"], ["sh", "bash", "yash"])?;
+        check_glob_match(["vim", "foo"], ["foo", "dwm", "bar", "vim"], ["vim", "foo"])?;
+
+        Ok(())
+    }
+}
