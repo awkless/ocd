@@ -9,7 +9,7 @@ mod vcs;
 
 use crate::{
     cluster::Cluster,
-    utils::{read_config, DirLayout, glob_match},
+    utils::{glob_match, read_config, DirLayout},
     vcs::{MultiNodeClone, NodeRepo, RootRepo},
 };
 

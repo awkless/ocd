@@ -6,7 +6,29 @@ SPDX-License-Identifier: MIT or Apache-2.0
 
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
-## [0.4.0](https://github.com/awkless/ocd/compare/v0.3.0..0.4.0) - 2025-03-30
+## [0.5.0](https://github.com/awkless/ocd/compare/v0.4.0..0.5.0) - 2025-04-01
+
+### Features
+
+- *(bin)* Add deploy command to CLI - ([d32dda7](https://github.com/awkless/ocd/commit/d32dda7ea7ed3f963bfd2cca13be7909bf8f9745))
+- *(bin)* Add glob matching to git shortcut command - ([a3fdd9c](https://github.com/awkless/ocd/commit/a3fdd9cd9d1f09dffd0baea0a19c83393aa8122c))
+- *(fs)* Add `glob_match` - ([8b89990](https://github.com/awkless/ocd/commit/8b89990a63758029c427324a24ead9b818f08a47))
+- *(fs->utils)* Rename `fs` to `utils` - ([d9a05f5](https://github.com/awkless/ocd/commit/d9a05f5fb51bfe71e8287d88a3326ae3b0c860ff))
+- *(vcs)* Add repository deployment functionality - ([8397d1b](https://github.com/awkless/ocd/commit/8397d1b9b13890676d14a60ff26ddb9187b31ebd))
+
+### Miscellaneous Chores
+
+- *(cargo)* Add `glob` crate - ([bc45b4a](https://github.com/awkless/ocd/commit/bc45b4a679293981abe8a61db2bd7ca656b915cc))
+- *(cargo)* Bump version to 0.5.0 - ([5f17001](https://github.com/awkless/ocd/commit/5f17001b79bd435ade1b0d05a2bdaedac687f5ea))
+
+### Ref
+
+- *(utils)* Improve interface of `glob_match` - ([3774093](https://github.com/awkless/ocd/commit/37740933acf90392d534619c4c061e309b9afe76))
+## [0.4.0](https://github.com/awkless/ocd/compare/v0.3.0..v0.4.0) - 2025-03-30
+
+### Documentation
+
+- *(changelog)* Document version 0.4.0 - ([8d39a2b](https://github.com/awkless/ocd/commit/8d39a2b3ca984752aebd7cfd7f2699fb435abd85))
 
 ### Features
 
