@@ -103,10 +103,16 @@ where
 /// ## Errors
 ///
 /// Will fail if one of the given list of patterns is invalid.
-pub fn glob_match(patterns: &Vec<String>, entries: &Vec<String>) -> Result<Vec<String>> {
+pub fn glob_match(
+    patterns: impl IntoIterator<Item = impl Into<String>>,
+    entries: impl IntoIterator<Item = impl Into<String>>,
+) -> Result<Vec<String>> {
+    let patterns = patterns.into_iter().map(Into::into).collect::<Vec<String>>();
+    let entries = entries.into_iter().map(Into::into).collect::<Vec<String>>();
+
     let mut matched = Vec::new();
-    for entry in entries {
-        for pattern in patterns {
+    for entry in &entries {
+        for pattern in &patterns {
             let result = glob::Pattern::new(pattern)?;
             if result.matches(entry) {
                 matched.push(entry.to_string());
@@ -129,12 +135,10 @@ mod tests {
         entries: impl IntoIterator<Item = impl Into<String>>,
         expect: impl IntoIterator<Item = impl Into<String>>,
     ) -> Result<()> {
-        let patterns = patterns.into_iter().map(Into::into).collect::<Vec<String>>();
-        let entries = entries.into_iter().map(Into::into).collect::<Vec<String>>();
         let mut expect = expect.into_iter().map(Into::into).collect::<Vec<String>>();
         expect.sort();
 
-        let mut result = glob_match(&patterns, &entries)?;
+        let mut result = glob_match(patterns, entries)?;
         result.sort();
         assert_eq!(result, expect);
 
