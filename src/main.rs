@@ -9,7 +9,7 @@ mod vcs;
 
 use crate::{
     cluster::Cluster,
-    utils::{read_config, DirLayout},
+    utils::{read_config, DirLayout, glob_match},
     vcs::{MultiNodeClone, NodeRepo, RootRepo},
 };
 
@@ -40,6 +40,9 @@ pub enum Command {
     #[command(override_usage = "ocd clone [options] <url>")]
     Clone(CloneOptions),
 
+    #[command(override_usage = "ocd deploy [options] [node_names]...")]
+    Deploy(DeployOptions),
+
     #[command(external_subcommand)]
     Git(Vec<OsString>),
 }
@@ -54,6 +57,22 @@ pub struct CloneOptions {
     /// Number of threads to use per node clone.
     #[arg(short, long, value_name = "limit")]
     pub jobs: Option<usize>,
+}
+
+/// Deploy node of cluster.
+#[derive(Args, Debug)]
+pub struct DeployOptions {
+    /// List of nodes to deploy.
+    #[arg(value_parser, num_args = 1.., value_delimiter = ',', value_name = "node_names")]
+    pub node_names: Vec<String>,
+
+    /// Do not deploy dependencies of target nodes.
+    #[arg(short, long)]
+    pub only: bool,
+
+    /// Deploy excluded files as well.
+    #[arg(short, long)]
+    pub with_excluded: bool,
 }
 
 #[tokio::main]
@@ -94,6 +113,54 @@ async fn run() -> Result<ExitCode> {
             let multi_clone = MultiNodeClone::new(&cluster, &dirs);
             multi_clone.clone_all(args.jobs).await?;
             root.deploy()?;
+        }
+        Command::Deploy(mut args) => {
+            let (root, cluster) = if dirs.config().join("cluster.toml").exists() {
+                let cluster: Cluster = read_config("cluster.toml", &dirs)?;
+                let root = RootRepo::from_cluster(&cluster, &dirs);
+                (root, cluster)
+            } else {
+                let root = RootRepo::new_open(&dirs)?;
+                let cluster = root.get_cluster()?;
+                root.deploy()?;
+                (root, cluster)
+            };
+
+            args.node_names.dedup();
+            for node_name in &mut args.node_names {
+                node_name.retain(|c| !c.is_whitespace());
+            }
+
+            if let Some(index) = args.node_names.iter().position(|x| *x == "root") {
+                args.node_names.swap_remove(index);
+                if args.with_excluded {
+                    root.deploy_all()?;
+                } else {
+                    root.deploy()?;
+                }
+            }
+
+            let targets = glob_match(args.node_names, cluster.nodes.keys())?;
+            for target in &targets {
+                if args.only {
+                    let node = cluster.get_node(target)?;
+                    let repo = NodeRepo::new(target, node, &dirs);
+                    if args.with_excluded {
+                        repo.deploy_all()?;
+                    } else {
+                        repo.deploy()?;
+                    }
+                } else {
+                    for (name, node) in cluster.dependency_iter(target) {
+                        let repo = NodeRepo::new(name, node, &dirs);
+                        if args.with_excluded {
+                            repo.deploy_all()?;
+                        } else {
+                            repo.deploy()?;
+                        }
+                    }
+                }
+            }
         }
         Command::Git(args) => {
             let cluster: Cluster = read_config("cluster.toml", &dirs)?;
