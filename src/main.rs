@@ -169,15 +169,17 @@ async fn run() -> Result<ExitCode> {
             let mut node_names: Vec<&str> = node_names.split(',').collect();
             node_names.dedup();
 
-            for node_name in node_names {
-                if node_name == "root" {
-                    let root = RootRepo::from_cluster(&cluster, &dirs);
-                    root.gitcall(args[1..].to_vec())?;
-                } else {
-                    let node = cluster.get_node(node_name)?;
-                    let node = NodeRepo::new(node_name, node, &dirs);
-                    node.gitcall(args[1..].to_vec())?;
-                }
+            if let Some(index) = node_names.iter().position(|x| *x == "root") {
+                node_names.swap_remove(index);
+                let root = RootRepo::from_cluster(&cluster, &dirs);
+                root.gitcall(args[1..].to_vec())?;
+            }
+
+            let targets = glob_match(node_names, cluster.nodes.keys())?;
+            for target in &targets {
+                let node = cluster.get_node(target)?;
+                let node = NodeRepo::new(target, node, &dirs);
+                node.gitcall(args[1..].to_vec())?;
             }
         }
     }
