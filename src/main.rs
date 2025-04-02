@@ -10,7 +10,7 @@ mod vcs;
 use crate::{
     cluster::Cluster,
     utils::{glob_match, read_config, DirLayout},
-    vcs::{MultiNodeClone, NodeRepo, RootRepo},
+    vcs::{MultiNodeClone, NodeRepo, RootRepo, Deployment},
 };
 
 use anyhow::Result;
@@ -43,6 +43,9 @@ pub enum Command {
     #[command(override_usage = "ocd deploy [options] [node_names]...")]
     Deploy(DeployOptions),
 
+    #[command(override_usage = "ocd undeploy [options] [node_names]...")]
+    Undeploy(UndeployOptions),
+
     #[command(external_subcommand)]
     Git(Vec<OsString>),
 }
@@ -73,6 +76,22 @@ pub struct DeployOptions {
     /// Deploy excluded files as well.
     #[arg(short, long)]
     pub with_excluded: bool,
+}
+
+/// Undeploy nodes of cluster.
+#[derive(Args, Debug)]
+pub struct UndeployOptions {
+    /// List of nodes to undeploy.
+    #[arg(value_parser, num_args = 1.., value_delimiter = ',', value_name = "node_names")]
+    pub node_names: Vec<String>,
+
+    /// Do not undeploy dependencies of target nodes.
+    #[arg(short, long)]
+    pub only: bool,
+
+    /// Undeploy excluded files only.
+    #[arg(short, long)]
+    pub excluded_only: bool,
 }
 
 #[tokio::main]
@@ -112,7 +131,7 @@ async fn run() -> Result<ExitCode> {
 
             let multi_clone = MultiNodeClone::new(&cluster, &dirs);
             multi_clone.clone_all(args.jobs).await?;
-            root.deploy()?;
+            root.index_deployment(Deployment::Deploy)?;
         }
         Command::Deploy(mut args) => {
             let (root, cluster) = if dirs.config().join("cluster.toml").exists() {
@@ -122,7 +141,7 @@ async fn run() -> Result<ExitCode> {
             } else {
                 let root = RootRepo::new_open(&dirs)?;
                 let cluster = root.get_cluster()?;
-                root.deploy()?;
+                root.index_deployment(Deployment::Deploy)?;
                 (root, cluster)
             };
 
@@ -134,9 +153,9 @@ async fn run() -> Result<ExitCode> {
             if let Some(index) = args.node_names.iter().position(|x| *x == "root") {
                 args.node_names.swap_remove(index);
                 if args.with_excluded {
-                    root.deploy_all()?;
+                    root.index_deployment(Deployment::DeployAll)?;
                 } else {
-                    root.deploy()?;
+                    log::warn!("root should always be deployed");
                 }
             }
 
@@ -146,17 +165,65 @@ async fn run() -> Result<ExitCode> {
                     let node = cluster.get_node(target)?;
                     let repo = NodeRepo::new(target, node, &dirs);
                     if args.with_excluded {
-                        repo.deploy_all()?;
+                        repo.index_deployment(Deployment::DeployAll)?;
                     } else {
-                        repo.deploy()?;
+                        repo.index_deployment(Deployment::Deploy)?;
                     }
                 } else {
                     for (name, node) in cluster.dependency_iter(target) {
                         let repo = NodeRepo::new(name, node, &dirs);
                         if args.with_excluded {
-                            repo.deploy_all()?;
+                            repo.index_deployment(Deployment::DeployAll)?;
                         } else {
-                            repo.deploy()?;
+                            repo.index_deployment(Deployment::Deploy)?;
+                        }
+                    }
+                }
+            }
+        }
+        Command::Undeploy(mut args) => {
+            let (root, cluster) = if dirs.config().join("cluster.toml").exists() {
+                let cluster: Cluster = read_config("cluster.toml", &dirs)?;
+                let root = RootRepo::from_cluster(&cluster, &dirs);
+                (root, cluster)
+            } else {
+                let root = RootRepo::new_open(&dirs)?;
+                let cluster = root.get_cluster()?;
+                root.index_deployment(Deployment::Deploy)?;
+                (root, cluster)
+            };
+
+            args.node_names.dedup();
+            for node_name in &mut args.node_names {
+                node_name.retain(|c| !c.is_whitespace());
+            }
+
+            if let Some(index) = args.node_names.iter().position(|x| *x == "root") {
+                args.node_names.swap_remove(index);
+                if args.excluded_only {
+                    root.index_deployment(Deployment::UndeployExcludes)?;
+                } else {
+                    log::warn!("root cannot be undeployed");
+                }
+            }
+
+            let targets = glob_match(args.node_names, cluster.nodes.keys())?;
+            for target in &targets {
+                if args.only {
+                    let node = cluster.get_node(target)?;
+                    let repo = NodeRepo::new(target, node, &dirs);
+                    if args.excluded_only {
+                        repo.index_deployment(Deployment::UndeployExcludes)?;
+                    } else {
+                        repo.index_deployment(Deployment::Undeploy)?;
+                    }
+                } else {
+                    for (name, node) in cluster.dependency_iter(target) {
+                        let repo = NodeRepo::new(name, node, &dirs);
+                        if args.excluded_only {
+                            repo.index_deployment(Deployment::UndeployExcludes)?;
+                        } else {
+                            repo.index_deployment(Deployment::Undeploy)?;
                         }
                     }
                 }
