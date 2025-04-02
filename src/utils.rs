@@ -7,7 +7,8 @@
 //! placed here either because they did not seem to fit the purpose of other modules, but were
 //! still important to have around.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
+use beau_collector::BeauCollector as _;
 use mkdirp::mkdirp;
 use std::{
     io::Read,
@@ -106,21 +107,34 @@ where
 pub fn glob_match(
     patterns: impl IntoIterator<Item = impl Into<String>>,
     entries: impl IntoIterator<Item = impl Into<String>>,
-) -> Result<Vec<String>> {
+) -> Vec<String> {
     let patterns = patterns.into_iter().map(Into::into).collect::<Vec<String>>();
     let entries = entries.into_iter().map(Into::into).collect::<Vec<String>>();
 
     let mut matched = Vec::new();
-    for entry in &entries {
-        for pattern in &patterns {
-            let result = glob::Pattern::new(pattern)?;
-            if result.matches(entry) {
+    for pattern in &patterns {
+        let pattern = match glob::Pattern::new(pattern) {
+            Ok(pattern) => pattern,
+            Err(error) => {
+                log::error!("Invalid pattern {pattern:?}: {error}");
+                continue;
+            }
+        };
+
+        let mut found = false;
+        for entry in &entries {
+            if pattern.matches(entry) {
+                found = true;
                 matched.push(entry.to_string());
             }
         }
+
+        if !found {
+            log::error!("Pattern {} does not match any entries", pattern.as_str());
+        }
     }
 
-    Ok(matched)
+    matched
 }
 
 #[cfg(test)]
@@ -134,22 +148,21 @@ mod tests {
         patterns: impl IntoIterator<Item = impl Into<String>>,
         entries: impl IntoIterator<Item = impl Into<String>>,
         expect: impl IntoIterator<Item = impl Into<String>>,
-    ) -> Result<()> {
+    ) {
         let mut expect = expect.into_iter().map(Into::into).collect::<Vec<String>>();
         expect.sort();
 
-        let mut result = glob_match(patterns, entries)?;
+        let mut result = glob_match(patterns, entries);
         result.sort();
         assert_eq!(result, expect);
-
-        Ok(())
     }
 
     #[test]
     fn smoke_glob_match() -> Result<()> {
-        check_glob_match(["*"], ["foo", "bar", "baz"], ["foo", "bar", "baz"])?;
-        check_glob_match(["*sh"], ["sh", "bash", "yash", "vim"], ["sh", "bash", "yash"])?;
-        check_glob_match(["vim", "foo"], ["foo", "dwm", "bar", "vim"], ["vim", "foo"])?;
+        check_glob_match(["*"], ["foo", "bar", "baz"], ["foo", "bar", "baz"]);
+        check_glob_match(["*sh"], ["sh", "bash", "yash", "vim"], ["sh", "bash", "yash"]);
+        check_glob_match(["vim", "foo"], ["foo", "dwm", "bar", "vim"], ["vim", "foo"]);
+        check_glob_match(["foo", "bar"], ["vim", "dwm", "sh"], Vec::<String>::new());
 
         Ok(())
     }

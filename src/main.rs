@@ -153,7 +153,7 @@ async fn run() -> Result<ExitCode> {
                 }
             }
 
-            let targets = glob_match(args.node_names, cluster.nodes.keys())?;
+            let targets = glob_match(args.node_names, cluster.nodes.keys());
             for target in &targets {
                 if args.only {
                     let node = cluster.get_node(target)?;
@@ -201,7 +201,7 @@ async fn run() -> Result<ExitCode> {
                 }
             }
 
-            let targets = glob_match(args.node_names, cluster.nodes.keys())?;
+            let targets = glob_match(args.node_names, cluster.nodes.keys());
             for target in &targets {
                 if args.only {
                     let node = cluster.get_node(target)?;
@@ -236,7 +236,7 @@ async fn run() -> Result<ExitCode> {
                 root.gitcall(args[1..].to_vec())?;
             }
 
-            let targets = glob_match(node_names, cluster.nodes.keys())?;
+            let targets = glob_match(node_names, cluster.nodes.keys());
             for target in &targets {
                 let node = cluster.get_node(target)?;
                 let node = NodeRepo::new(target, node, &dirs);
