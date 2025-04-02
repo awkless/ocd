@@ -7,8 +7,7 @@
 //! placed here either because they did not seem to fit the purpose of other modules, but were
 //! still important to have around.
 
-use anyhow::{anyhow, Context, Result};
-use beau_collector::BeauCollector as _;
+use anyhow::{anyhow, Result};
 use mkdirp::mkdirp;
 use std::{
     io::Read,
