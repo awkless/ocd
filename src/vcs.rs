@@ -3,9 +3,39 @@
 
 //! Version control system management.
 //!
-//! This module provides APIs to manipulate version control repository data. Currently, OCD mainly
-//! targets Git as the primary VCS of choice. Thus, the code here makes it easy to manipulate Git
-//! repository data in a fashion that makes sense to OCD's codebase.
+//! This module provides utilities to manipulate version control system (VCS) repository data for a
+//! given cluster.  Currently, OCD mainly targets Git as the primary VCS of choice. Thus, the code
+//! here makes it easy to manipulate Git repository data in a fashion that makes sense to OCD's
+//! cluster configuration model.
+//!
+//! # Cluster structure
+//!
+//! The OCD tool operates on a __cluster__. A _cluster_ is a collection of Git repositories that
+//! can be deployed together. The cluster is comprised of three repository types: __normal__,
+//! __bare-alias__, and __root__. A _normal_ repository is just a regular Git repository whose
+//! gitdir and worktree point to the same path. A _bare-alias_ repository is a bare Git repository
+//! that uses a target directory as an alias of a worktree. That target directory can be treated
+//! like a Git repository without initilization through the OCD tool itself.
+//!
+//! Finally, a _root_ repository is very special. It represents the root of the cluster itself. It
+//! is responsible for containing the cluster configuration file that this module is meant to
+//! handle. Thus, all repository deployment for a given cluster definition originates right here in
+//! the root repository. However, a cluster can only have _one_ root, i.e., one repository
+//! containing one copy of the cluster configuration file to deploy from.
+//!
+//! The cluster itself is defined through a special configuration file that the user writes and
+//! maintains themselves. It contains all important configuration settings for each repository in
+//! the cluster such that these settings determine how OCD will manage and deploy each repository,
+//! including the root repository itself.
+//!
+//! The concept of a cluster provides the user with a lot of flexibility in how they choose to
+//! organize their dotfile configurations. The user can store dotfiles in separate repositories and
+//! plug them into a given cluster whenever they want. The user can also maintain a monolithic
+//! repository containing every possible configuration file they use. Whatever method of
+//! organization the user chooses, the OCD tool's cluster configuration model will provide flexible
+//! and adaptable support.
+//!
+//! See [`cluster`](crate::cluster) for more information about OCD's cluster configuration model.
 
 use crate::{
     cluster::{Cluster, Node},
@@ -39,7 +69,7 @@ impl RootRepo {
     ///
     /// Will automatically set configuration settings based on cluster configuration file.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if given invalid URL, or repository does not contain a cluster configuration file
     /// to deploy.
@@ -65,7 +95,7 @@ impl RootRepo {
     ///
     /// Will automatically set configuration settings based on cluster configuration file.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if root repository does not exist for some reason.
     pub fn new_open(dirs: &DirLayout) -> Result<Self> {
@@ -95,7 +125,7 @@ impl RootRepo {
 
     /// Extract cluster configuration file.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if repository does not contain a cluster configuration file.
     pub fn get_cluster(&self) -> Result<Cluster> {
@@ -113,7 +143,7 @@ impl RootRepo {
     ///
     /// Logs any data written to stdout or stderr.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
     /// itself.
@@ -166,7 +196,7 @@ impl NodeRepo {
     ///
     /// Logs any data written to stdout or stderr.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
     /// itself.
@@ -208,7 +238,7 @@ impl MultiNodeClone {
     /// Shows clone progress for each clone task. Clears each progress bar after a task is
     /// finished. Tasks may block if user needs to enter their credentials.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if any clone task fails. However, it will not cancel any active clone tasks that
     /// are not failing. Instead it will collect all failed tasks and report them in one shot after
@@ -323,7 +353,7 @@ impl Git {
     /// automatically determined. This prompt may occur through external program or through the
     /// current terminal the user is running OCD on.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if repository cannot be cloned for whatever reason. May also fail if user does
     /// not provide valid credentials when prompted.
@@ -399,7 +429,7 @@ impl Git {
     ///
     /// Returns data sent to stdout and stderr as a loggable string.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
     /// itself.
@@ -600,7 +630,7 @@ impl SparseManip {
 
     /// Write sparsity rules to sparse checkout excluding unwanted files.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if sparsity rules cannot be written to sparse file for whatever reason.
     pub(crate) fn exclude_unwanted(&self) -> Result<()> {
@@ -617,7 +647,7 @@ impl SparseManip {
 
     /// Write sparsity rules to include all files of index.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if sparsity rules cannot be written to sparse file for whatever reason.
     pub(crate) fn include_all(&self) -> Result<()> {
@@ -628,7 +658,7 @@ impl SparseManip {
 
     /// Write sparsity rules to exclude the entire index from worktree.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if sparsity rules cannot be written to sparse file for whatever reason.
     pub fn exclude_all(&self) -> Result<()> {
