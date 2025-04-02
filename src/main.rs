@@ -1,13 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT or Apache-2.0
 
-#![allow(dead_code)]
-
-mod cluster;
-mod utils;
-mod vcs;
-
-use crate::{
+use ocd::{
     cluster::Cluster,
     utils::{glob_match, read_config, DirLayout},
     vcs::{MultiNodeClone, NodeRepo, RootRepo, Deployment},
