@@ -3,32 +3,37 @@
 
 //! Cluster configuration management.
 //!
-//! This module provides basic APIs to manage and manipulate OCD's cluster configuration model.
+//! This module provides utilities to manage and manipulate OCD's cluster configuration model.
 //! Given that certain OCD commands must modify the contents of the user's cluster configuration,
 //! the APIs provided here ensure preservation of existing formatting and whitespace for both
 //! deserialization and serialization.
 //!
-//! ## Clusters
+//! # Cluster configuration model
 //!
-//! The OCD tool operates on a __cluster__. A _cluster_ is a collection of Git repositories that
-//! can be deployed together. The cluster is comprised of three repository types: __normal__,
-//! __bare-alias__, and __root__. A _normal_ repository is just a regular Git repository whose
-//! gitdir and worktree point to the same path. A _bare-alias_ repository is a bare Git repository
-//! that uses a target directory as an alias of a worktree. That target directory can be treated
-//! like a Git repository without initilization through the OCD tool itself.
+//! OCD's cluster configuration model is comprised of two basic components: __root__ and __node__.
+//! A _root_ configures the root repository, and a _node_ configures a normal or bare-alias
+//! repository for deployment.
 //!
-//! Finally, a _root_ repository is very special. It represents the root of the cluster itself. It
-//! is responsible for containing the cluster configuration file that this module is meant to
-//! handle. Thus, all repository deployment for a given cluster definition originates right here in
-//! the root repository. However, a cluster can only have _one_ root, i.e., one repository
-//! containing one copy of the cluster configuration file to deploy from.
+//! Currently, the OCD tool uses the TOML data exchange format for writing and storing user-defined
+//! cluster definitions. The root uses the root table, while a node uses a special reserved table
+//! named "node" with a dotted key representing the name of the node entry itself,
+//! e.g., "[node.vim]".
 //!
-//! The concept of a cluster provides the user with a lot of flexibility in how they choose to
-//! organize their dotfile configurations. The user can store dotfiles in separate repositories and
-//! plug them into a given cluster whenever they want. The user can also maintain a monolithic
-//! repository containing every possible configuration file they use. Whatever method of
-//! organization the user chooses, the OCD tool's cluster configuration model will provide flexible
-//! and adaptable support.
+//! The root of a cluster definition mainly determines the worktree alias path, and the set of
+//! files to exclude from its index upon deployment to said worktree alias path. Both of these
+//! configuration settings are optional.
+//!
+//! A node of a cluster definition contains the following settings:
+//!   - URL to clone node repository from.
+//!   - Boolean flag to determine if it is bare-alias or not.
+//!   - Target worktree alias path to deploy to.
+//!   - List of files to exclude from index upon deployment.
+//!   - List of other nodes in cluster to deploy as dependencies.
+//!
+//! The URL and boolean flag are mandatory, while everything else is optional.
+//!
+//! See [`vcs`](crate::vcs) module for more information about how repositories for a cluster
+//! definition are managed through version control.
 
 use anyhow::{anyhow, Context, Result};
 use std::{
@@ -44,18 +49,16 @@ use toml_edit::{Array, DocumentMut, Item, Key, Table, Value};
 /// manipulation when needed. This type only operates on strings. Caller is responsible for file
 /// I/O.
 ///
-/// ## Cluster definition
+/// # Invariants
 ///
-/// A __cluster definition__ is comprised of two basic components: __root__ and __node__. A root
-/// configures the root repository, and a __node__ configures a normal or bare-alias repository for
-/// deployment. The root uses the root table, while a node uses a special reserved table named
-/// "node" with a dotted key representing the name of the node entry itself, e.g., "node.vim".
+/// - Node dependencies are acyclic.
+/// - Worktree paths are always expanded.
 #[derive(Default, Debug)]
 pub struct Cluster {
     /// Root of cluster definition.
     pub root: Root,
 
-    /// All node entries in cluster definition.
+    /// All node entries in cluster definition represented as DAG.
     pub nodes: HashMap<String, Node>,
 
     document: DocumentMut,
@@ -69,7 +72,7 @@ impl Cluster {
 
     /// Get single node by name.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if node does not exist in cluster.
     pub fn get_node(&self, name: impl AsRef<str>) -> Result<&Node> {
@@ -80,21 +83,22 @@ impl Cluster {
 
     /// Iterate through all dependencies of a target node by name.
     ///
-    /// Provides full path through each dependency through a given node, include the node itself.
+    /// Provides full path through each dependency of target node inclusively.
     pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
         let mut stack = VecDeque::new();
         stack.push_front(node.into());
         DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
     }
 
-    /// Add new node into cluster.
+    /// Add node into cluster.
     ///
     /// Will insert new node into cluster, returning [`None`] if the node was actually new, or
-    /// [`Some`] containing the old node it replaced if it was not new.
+    /// [`Some`] containing the old node it replaced if it was not new. The "node" table will be
+    /// constructed if it does not already exist.
     ///
-    /// ## Errors
+    /// # Errors
     ///
-    /// Will fail "node" table was not actually defined as a table.
+    /// Will fail if "node" item exists, but was not actually defined as a table.
     pub fn add_node(&mut self, node: (impl AsRef<str>, Node)) -> Result<Option<Node>> {
         let (name, node) = node;
 
@@ -102,6 +106,7 @@ impl Cluster {
         let table = if let Some(item) = self.document.get_mut("node") {
             item.as_table_mut().ok_or(anyhow!("Node table not defined as a table"))?
         } else {
+            // INVARIANT: Construct new "node" table to insert node entry into.
             let mut new_table = Table::new();
             new_table.set_implicit(true);
             self.document.insert("node", Item::Table(new_table));
@@ -114,7 +119,7 @@ impl Cluster {
 
     /// Remove existing node from cluster.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Will fail if target node does not exist in cluster, or "node" table was not defined as a
     /// table.
@@ -133,10 +138,11 @@ impl Cluster {
 
     fn acyclic_check(&self) -> Result<()> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
-        let mut count: usize = 0;
         let mut queue: VecDeque<String> = VecDeque::new();
         let mut visited: HashSet<String> = HashSet::new();
 
+        // INVARIANT: The in-degree of each node is the sum of all incoming edges to each
+        // destination node.
         for (name, node) in &self.nodes {
             in_degree.entry(name.clone()).or_insert(0);
             for depend in node.depends.iter().flatten() {
@@ -144,32 +150,41 @@ impl Cluster {
             }
         }
 
+        // INVARIANT: Queue nodes with in-degree of zero, i.e., nodes with no incoming edges.
         for (name, degree) in &in_degree {
             if *degree == 0 {
                 queue.push_back(name.clone());
             }
         }
 
+        // BFS terversal.
         while let Some(current) = queue.pop_front() {
-            count += 1;
             for depend in self.nodes[&current].depends.iter().flatten() {
                 *in_degree.get_mut(depend).unwrap() -= 1;
                 if *in_degree.get(depend).unwrap() == 0 {
                     queue.push_back(depend.clone());
                 }
             }
+            // INVARIANT: Mark each queued node as visited, representing toplogical sort of graph.
             visited.insert(current);
         }
 
-        if count != self.nodes.len() {
+        // INVARIANT: Queue is empty, but graph has not been fully visited.
+        //   - There exists a cycle.
+        //   - The unvisited nodes represent this cycle.
+        if visited.len() != self.nodes.len() {
             let cycle: Vec<String> = self
                 .nodes
-                .iter()
-                .filter(|(name, _)| !visited.contains(*name))
-                .map(|(name, _)| name.clone())
+                .keys()
+                .filter(|key| !visited.contains(*key))
+                .map(|key| key.clone())
                 .collect();
+
+            // TODO: Pretty print structure of cycle, besides printing names of problematic nodes.
             return Err(anyhow!("Cluster contains cycle(s): {cycle:?}"));
         }
+
+        log::debug!("toplogical sort of cluster nodes: {visited:?}");
 
         Ok(())
     }
@@ -230,9 +245,9 @@ impl std::fmt::Display for Cluster {
 
 /// Iterator for generating valid node dependency path.
 ///
-/// ## Invariants
+/// # Invariants
 ///
-/// 1. Nodes and their dependencies are acyclic.
+/// Nodes and their dependencies are acyclic.
 #[derive(Debug)]
 pub struct DependencyIter<'cluster> {
     graph: &'cluster HashMap<String, Node>,
@@ -244,6 +259,7 @@ impl<'cluster> Iterator for DependencyIter<'cluster> {
     type Item = (&'cluster str, &'cluster Node);
 
     fn next(&mut self) -> Option<Self::Item> {
+        // Stack-based DFS traversal.
         if let Some(node) = self.stack.pop_front() {
             let Some((name, node)) = self.graph.get_key_value(&node) else {
                 log::error!("Node '{node}' not defined in cluster");
