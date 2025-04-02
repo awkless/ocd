@@ -135,6 +135,11 @@ impl RootRepo {
             .parse::<Cluster>()
     }
 
+    /// Determine how to deploy index of repository.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if sparse checkout fails.
     pub fn index_deployment(&self, action: Deployment) -> Result<()> {
         self.0.index_deployment(action)
     }
@@ -188,6 +193,11 @@ impl NodeRepo {
         self
     }
 
+    /// Determine how to deploy index of repository.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if sparse checkout fails.
     pub fn index_deployment(&self, action: Deployment) -> Result<()> {
         self.0.index_deployment(action)
     }
@@ -400,6 +410,11 @@ impl Git {
         Ok(())
     }
 
+    /// Determine how to deploy index of repository.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if sparse checkout fails.
     pub fn index_deployment(&self, action: Deployment) -> Result<()> {
         let msg = match action {
             Deployment::Deploy => {
@@ -454,6 +469,12 @@ impl Git {
         syscall("git", bin_args)
     }
 
+    /// Log output of syscall to Git binary.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
+    /// itself.
     pub fn bincall_log(
         &self,
         msg: impl AsRef<str>,
@@ -482,15 +503,20 @@ pub enum RepoKind {
     BareAlias(AliasDir),
 }
 
+/// Methods of repository index deployment.
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub enum Deployment {
+    /// Deply to target worktree excluding unwanted files.
     #[default]
     Deploy,
 
+    /// Deploy entire index to target worktree.
     DeployAll,
 
+    /// Undeploy entire index from target worktree.
     Undeploy,
 
+    /// Only undeploy excluded files from target worktree.
     UndeployExcludes,
 }
 
