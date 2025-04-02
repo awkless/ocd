@@ -105,29 +105,8 @@ impl RootRepo {
             .parse::<Cluster>()
     }
 
-    /// Deploy root repository to worktree alias.
-    ///
-    /// Excludes unwanted files from deployment.
-    ///
-    /// ## Errors
-    ///
-    /// Will fail if root repository cannot be deployed to worktree alias, or
-    /// sparse checkout fails to exclude unwanted files.
-    pub fn deploy(&self) -> Result<()> {
-        self.0.deploy()
-    }
-
-    /// Deploy root repository to worktree alias in full.
-    ///
-    /// Will include all files of root repository.
-    ///
-    ///
-    /// ## Errors
-    ///
-    /// Will fail if root repository cannot be deployed to worktree alias, or
-    /// sparse checkout fails to exclude unwanted files.
-    pub fn deploy_all(&self) -> Result<()> {
-        self.0.deploy_all()
+    pub fn index_deployment(&self, action: Deployment) -> Result<()> {
+        self.0.index_deployment(action)
     }
 
     /// Call Git binary.
@@ -179,29 +158,8 @@ impl NodeRepo {
         self
     }
 
-    /// Deploy node repository to worktree alias.
-    ///
-    /// Excludes unwanted files from deployment.
-    ///
-    /// ## Errors
-    ///
-    /// Will fail if root repository cannot be deployed to worktree alias, or
-    /// sparse checkout fails to exclude unwanted files.
-    pub fn deploy(&self) -> Result<()> {
-        self.0.deploy()
-    }
-
-    /// Deploy node repository to worktree alias in full.
-    ///
-    /// Will include all files of node repository.
-    ///
-    ///
-    /// ## Errors
-    ///
-    /// Will fail if root repository cannot be deployed to worktree alias, or
-    /// sparse checkout fails to exclude unwanted files.
-    pub fn deploy_all(&self) -> Result<()> {
-        self.0.deploy_all()
+    pub fn index_deployment(&self, action: Deployment) -> Result<()> {
+        self.0.index_deployment(action)
     }
 
     /// Call Git binary.
@@ -412,36 +370,27 @@ impl Git {
         Ok(())
     }
 
-    /// Deploy repository to target worktree alias.
-    ///
-    /// Will exclude unwanted files through sparse checkout.
-    ///
-    /// ## Errors
-    ///
-    /// Will fail if Git checkout fails, or writing sparsity rules fails.
-    pub fn deploy(&self) -> Result<()> {
-        self.sparsity.exclude_unwanted()?;
-        let output = self.bincall(["checkout"])?;
-        if !output.is_empty() {
-            log::info!("deploy {}:\n{output}", self.path.display());
-        }
+    pub fn index_deployment(&self, action: Deployment) -> Result<()> {
+        let msg = match action {
+            Deployment::Deploy => {
+                self.sparsity.exclude_unwanted()?;
+                format!("deploy {}", self.path.display())
+            }
+            Deployment::Undeploy => {
+                self.sparsity.exclude_all()?;
+                format!("undeploy {}", self.path.display())
+            }
+            Deployment::DeployAll => {
+                self.sparsity.include_all()?;
+                format!("deploy all of {}", self.path.display())
+            }
+            Deployment::UndeployExcludes => {
+                self.sparsity.exclude_unwanted()?;
+                format!("undeploy excluded files of {}", self.path.display())
+            }
+        };
 
-        Ok(())
-    }
-
-    /// Deploy full repository to target worktree alias.
-    ///
-    /// Includes all files in repository index, included unwanted files.
-    ///
-    /// # Errors
-    ///
-    /// Will fail if Git checkout fails, or writing sparsity rules fails.
-    pub fn deploy_all(&self) -> Result<()> {
-        self.sparsity.include_all()?;
-        let output = self.bincall(["checkout"])?;
-        if !output.is_empty() {
-            log::info!("deploy {}:\n{output}", self.path.display());
-        }
+        self.bincall_log(msg, ["checkout"])?;
 
         Ok(())
     }
@@ -474,6 +423,19 @@ impl Git {
 
         syscall("git", bin_args)
     }
+
+    pub fn bincall_log(
+        &self,
+        msg: impl AsRef<str>,
+        args: impl IntoIterator<Item = impl Into<OsString>>
+    ) -> Result<()> {
+        let output = self.bincall(args)?;
+        if !output.is_empty() {
+            log::info!("{}\n{output}", msg.as_ref());
+        }
+
+        Ok(())
+    }
 }
 
 /// Determine how to treat repository.
@@ -488,6 +450,18 @@ pub enum RepoKind {
 
     /// Bare Git repository that uses a target directory as an alias for a worktree.
     BareAlias(AliasDir),
+}
+
+#[derive(Default, Debug, PartialEq, Eq, Clone)]
+pub enum Deployment {
+    #[default]
+    Deploy,
+
+    DeployAll,
+
+    Undeploy,
+
+    UndeployExcludes,
 }
 
 impl RepoKind {
@@ -649,6 +623,17 @@ impl SparseManip {
     pub(crate) fn include_all(&self) -> Result<()> {
         let mut file = File::create(&self.sparse_path)?;
         file.write_all("/*".as_bytes())?;
+        Ok(())
+    }
+
+    /// Write sparsity rules to exclude the entire index from worktree.
+    ///
+    /// ## Errors
+    ///
+    /// Will fail if sparsity rules cannot be written to sparse file for whatever reason.
+    pub fn exclude_all(&self) -> Result<()> {
+        let mut file = File::create(&self.sparse_path)?;
+        file.write_all("".as_bytes())?;
         Ok(())
     }
 }
