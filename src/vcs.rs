@@ -39,7 +39,7 @@
 
 use crate::{
     cluster::{Cluster, Node},
-    utils::{syscall_non_interactive, DirLayout},
+    utils::{syscall_non_interactive, syscall_interactive, DirLayout},
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -129,7 +129,7 @@ impl RootRepo {
     /// Will fail if repository does not contain a cluster configuration file.
     pub fn get_cluster(&self) -> Result<Cluster> {
         self.0
-            .bincall(["cat-file", "-p", "@:cluster.toml"])?
+            .bincall_non_interactive(["cat-file", "-p", "@:cluster.toml"])?
             .replace("stdout:", "")
             .parse::<Cluster>()
     }
@@ -152,12 +152,7 @@ impl RootRepo {
     /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
     /// itself.
     pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
-        let output = self.0.bincall(args)?;
-        if !output.is_empty() {
-            log::info!("{}\n{output}", self.0.path().display());
-        }
-
-        Ok(())
+        self.0.bincall_interactive(args)
     }
 }
 
@@ -210,12 +205,7 @@ impl NodeRepo {
     /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
     /// itself.
     pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
-        let output = self.0.bincall(args)?;
-        if !output.is_empty() {
-            log::info!("{}\n{output}", self.0.path().display());
-        }
-
-        Ok(())
+        self.0.bincall_interactive(args)
     }
 }
 
@@ -434,20 +424,54 @@ impl Git {
             }
         };
 
-        self.bincall_log(msg, ["checkout"])?;
+        let output = self.bincall_non_interactive(["checkout"])?;
+        log::info!("{msg}\n{output}");
 
         Ok(())
     }
 
-    /// Make system call to Git binary.
+    /// Call Git binary non-interactively.
     ///
-    /// Returns data sent to stdout and stderr as a loggable string.
+    /// Will pipe stdout and stderr into a string that is returned to call for further evaluation.
+    /// Caller cannot interact with Git binary at all. Mainly meant to feed Git binary one-liners
+    /// whose output will be parsed and processed for further actions in codebase.
     ///
     /// # Errors
     ///
-    /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
-    /// itself.
-    pub fn bincall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<String> {
+    /// - Will fail if Git binary cannot be found.
+    /// - Will fail if provided arguments are invalid.
+    pub fn bincall_non_interactive(
+        &self,
+        args: impl IntoIterator<Item = impl Into<OsString>>
+    ) -> Result<String> {
+        let args = self.expand_bin_args(args);
+        syscall_non_interactive("git", args)
+    }
+
+    /// Call git binary interactively.
+    ///
+    /// Allows caller to give control of current session to Git binary so user can properly
+    /// interact with Git itself. Control is then given back to the OCD program once the user
+    /// finishes interacting with Git.
+    ///
+    /// Once called, Git binary will inherit stdout and stderr from user's current environment. Any
+    /// output that Git provides is produced interactively. Thus, there is no need to collect
+    /// output, because will have already seen it.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if Git binary cannot be found.
+    /// - Will fail if provided arguments are invalid.
+    pub fn bincall_interactive(
+        &self,
+        args: impl IntoIterator<Item = impl Into<OsString>>,
+    ) -> Result<()> {
+        log::info!("interactive call to git for {}", self.path.display());
+        let args = self.expand_bin_args(args);
+        syscall_interactive("git", args)
+    }
+
+    fn expand_bin_args(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Vec<OsString> {
         let gitdir: OsString =
             if self.kind == RepoKind::Normal { self.path.join(".git") } else { self.path.clone() }
                 .to_string_lossy()
@@ -465,26 +489,7 @@ impl Git {
         bin_args.extend(path_args);
         bin_args.extend(args.into_iter().map(Into::into));
 
-        syscall_non_interactive("git", bin_args)
-    }
-
-    /// Log output of syscall to Git binary.
-    ///
-    /// # Errors
-    ///
-    /// Will fail if Git binary cannot be found, or provided arguments are invalid to Git binary
-    /// itself.
-    pub fn bincall_log(
-        &self,
-        msg: impl AsRef<str>,
-        args: impl IntoIterator<Item = impl Into<OsString>>,
-    ) -> Result<()> {
-        let output = self.bincall(args)?;
-        if !output.is_empty() {
-            log::info!("{}\n{output}", msg.as_ref());
-        }
-
-        Ok(())
+        bin_args
     }
 }
 
