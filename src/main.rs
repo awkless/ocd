@@ -4,7 +4,7 @@
 use ocd::{
     cluster::Cluster,
     utils::{glob_match, read_config, DirLayout},
-    vcs::{MultiNodeClone, NodeRepo, RootRepo, Deployment},
+    vcs::{Deployment, MultiNodeClone, NodeRepo, RootRepo},
 };
 
 use anyhow::Result;

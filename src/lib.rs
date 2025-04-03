@@ -19,11 +19,7 @@
 //! [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles#Tracking_dotfiles_directly_with_Git
 
 #![allow(dead_code, clippy::missing_docs_in_private_items)]
-#![warn(
-    missing_docs,
-    clippy::missing_errors_doc,
-    clippy::missing_panic_doc,
-)]
+#![warn(missing_docs, clippy::missing_errors_doc, clippy::missing_panic_doc)]
 
 pub mod cluster;
 pub mod utils;
