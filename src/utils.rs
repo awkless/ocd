@@ -7,11 +7,13 @@
 //! placed here either because they did not seem to fit the purpose of other modules, but were
 //! still important to have around.
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use mkdirp::mkdirp;
 use std::{
+    ffi::{OsStr, OsString},
     io::Read,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 /// Determine absolute paths to required dirctories.
@@ -134,6 +136,50 @@ pub fn glob_match(
     }
 
     matched
+}
+
+/// Call external shell program non-interactively.
+///
+/// Will pipe stdout and stderr to child process, waiting to collect all output and combine it into
+/// a singular string to be returned and handled by the caller. This child process cannot be
+/// interacted with. In fact, any attempts to use stdin will close the stream.
+///
+/// The combined output of stdout and stderr is labeled "stdout: {stdout}" and "stderr: {stderr}"
+/// in the returned string respectively. This is done to make it easy to extract either output
+/// stream from the returned string for further processing once the external shell program is
+/// finished executing.
+///
+/// # Errors
+///
+/// - Will fail if external shell program cannot be found.
+/// - Will fail if given arguments for external shell program are invalid.
+pub fn syscall_non_interactive(
+    cmd: impl AsRef<OsStr>,
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+) -> Result<String> {
+    let args: Vec<OsString> = args.into_iter().map(|s| s.as_ref().to_os_string()).collect();
+    let output = Command::new(cmd.as_ref())
+        .args(args)
+        .output()
+        .with_context(|| format!("Failed to call {:?}", cmd.as_ref()))?;
+
+    let stdout = String::from_utf8_lossy(output.stdout.as_slice()).into_owned();
+    let stderr = String::from_utf8_lossy(output.stderr.as_slice()).into_owned();
+    let mut message = String::new();
+
+    if !stdout.is_empty() {
+        message.push_str(format!("stdout: {stdout}").as_str());
+    }
+
+    if !stderr.is_empty() {
+        message.push_str(format!("stderr: {stderr}").as_str());
+    }
+
+    if !output.status.success() {
+        return Err(anyhow!("{:?} failed\n{message}", cmd.as_ref()));
+    }
+
+    Ok(message)
 }
 
 #[cfg(test)]

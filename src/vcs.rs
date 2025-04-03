@@ -39,7 +39,7 @@
 
 use crate::{
     cluster::{Cluster, Node},
-    utils::DirLayout,
+    utils::{syscall_non_interactive, DirLayout},
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -50,12 +50,11 @@ use git2::{build::RepoBuilder, FetchOptions, RemoteCallbacks};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use inquire::{Password, Text};
 use std::{
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     fmt::Write as FmtWrite,
     fs::File,
     io::Write as IoWrite,
     path::{Path, PathBuf},
-    process::{Command, Output},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
@@ -466,7 +465,7 @@ impl Git {
         bin_args.extend(path_args);
         bin_args.extend(args.into_iter().map(Into::into));
 
-        syscall("git", bin_args)
+        syscall_non_interactive("git", bin_args)
     }
 
     /// Log output of syscall to Git binary.
@@ -478,7 +477,7 @@ impl Git {
     pub fn bincall_log(
         &self,
         msg: impl AsRef<str>,
-        args: impl IntoIterator<Item = impl Into<OsString>>
+        args: impl IntoIterator<Item = impl Into<OsString>>,
     ) -> Result<()> {
         let output = self.bincall(args)?;
         if !output.is_empty() {
@@ -692,43 +691,4 @@ impl SparseManip {
         file.write_all("".as_bytes())?;
         Ok(())
     }
-}
-
-fn syscall(
-    cmd: impl AsRef<OsStr>,
-    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
-) -> Result<String> {
-    let args: Vec<OsString> = args.into_iter().map(|s| s.as_ref().to_os_string()).collect();
-    let output = Command::new(cmd.as_ref())
-        .args(args)
-        .output()
-        .with_context(|| format!("Failed to call {:?}", cmd.as_ref()))?;
-    let message = format_cmd_output(&output);
-    if !output.status.success() {
-        return Err(anyhow!("{:?} failed\n{message}", cmd.as_ref()));
-    }
-
-    Ok(message)
-}
-
-fn format_cmd_output(output: &Output) -> String {
-    let stdout = String::from_utf8_lossy(output.stdout.as_slice()).into_owned();
-    let stderr = String::from_utf8_lossy(output.stderr.as_slice()).into_owned();
-    let mut message = String::new();
-
-    if !stdout.is_empty() {
-        message.push_str(format!("stdout: {stdout}").as_str());
-    }
-
-    if !stderr.is_empty() {
-        message.push_str(format!("stderr: {stderr}").as_str());
-    }
-
-    let message = message
-        .strip_suffix("\r\n")
-        .or(message.strip_suffix('\n'))
-        .map(ToString::to_string)
-        .unwrap_or(message);
-
-    message
 }
