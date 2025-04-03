@@ -37,11 +37,11 @@ impl DirLayout {
     ///
     /// Will construct paths to configuration and data directory if they do not already exist.
     ///
-    /// ## Errors
+    /// # Errors
     ///
-    /// Will fail if home directory, configuration directory, or data directory cannot be
-    /// determined for whatever reason. Will also fail if configuration or data directories cannot
-    /// be constructed when needed.
+    /// - Will fail if home, configuration, or data directories cannot be determined for whatever
+    ///   reason.
+    /// - Will also fail if configuration or data directories cannot be constructed when needed.
     pub fn new() -> Result<Self> {
         let home = dirs::home_dir().ok_or(anyhow!("Cannot find home directory"))?;
         let config = dirs::config_dir().ok_or(anyhow!("Cannot find config directory"))?.join("ocd");
@@ -74,10 +74,10 @@ impl DirLayout {
 /// General helper that uses type annotations to determine the correct type to parse and deserialize
 /// a given file target to. Will create an empty configuration file if it does not already exist.
 ///
-/// ## Errors
+/// # Errors
 ///
-/// Will fail if path cannot be opened, created, or read. Will also fail if read string data cannot
-/// be parsed and deserialized into target type..
+/// - Will fail if path cannot be opened, created, or read.
+/// - Will fail if extracted string data cannot be parsed and deserialized into target type.
 pub fn read_config<C>(path: impl AsRef<Path>, dirs: &DirLayout) -> Result<C>
 where
     C: std::str::FromStr<Err = anyhow::Error>,
@@ -100,11 +100,13 @@ where
 /// Use Unix-like glob pattern matching.
 ///
 /// Will match a set of patterns to a given set of entries. Whatever is matched is returned as a
-/// new vector to operate with.
+/// new vector to operate with. Invalid patterns or patterns with no matches or excluded from the
+/// new vector, and logged as errors.
 ///
-/// ## Errors
+/// # Invariants
 ///
-/// Will fail if one of the given list of patterns is invalid.
+/// - Always produce valid vector containing matched entries only.
+/// - Process full pattern list without failing.
 pub fn glob_match(
     patterns: impl IntoIterator<Item = impl Into<String>>,
     entries: impl IntoIterator<Item = impl Into<String>>,
@@ -117,6 +119,7 @@ pub fn glob_match(
         let pattern = match glob::Pattern::new(pattern) {
             Ok(pattern) => pattern,
             Err(error) => {
+                // INVARIANT: Error log invalid pattern, and skip over to next available pattern.
                 log::error!("Invalid pattern {pattern:?}: {error}");
                 continue;
             }
@@ -124,12 +127,14 @@ pub fn glob_match(
 
         let mut found = false;
         for entry in &entries {
+            // INVARIANT: Only include valid matches into vector.
             if pattern.matches(entry) {
                 found = true;
                 matched.push(entry.to_string());
             }
         }
 
+        // INVARIANT: Error log unmatched pattern before moving to next available pattern.
         if !found {
             log::error!("Pattern {} does not match any entries", pattern.as_str());
         }
