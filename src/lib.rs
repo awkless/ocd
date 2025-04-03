@@ -24,3 +24,6 @@
 pub mod cluster;
 pub mod utils;
 pub mod vcs;
+
+#[cfg(test)]
+mod tests;
