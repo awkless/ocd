@@ -21,6 +21,14 @@ codegen-units = 1
 panic = 'abort'
 strip = true
 
+[lib]
+doctest = false
+
+[[bin]]
+name = "ocd"
+path = "src/main.rs"
+test = false
+
 [dependencies]
 anyhow = "1.0.95"
 auth-git2 = "0.5.7"
