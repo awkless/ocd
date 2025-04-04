@@ -177,7 +177,7 @@ impl Cluster {
                 .nodes
                 .keys()
                 .filter(|key| !visited.contains(*key))
-                .map(|key| key.clone())
+                .cloned()
                 .collect();
 
             // TODO: Pretty print structure of cycle, besides printing names of problematic nodes.

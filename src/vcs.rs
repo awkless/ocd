@@ -511,7 +511,7 @@ pub enum RepoKind {
 }
 
 /// Methods of repository index deployment.
-#[derive(Default, Debug, PartialEq, Eq, Clone)]
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Deployment {
     /// Deply to target worktree excluding unwanted files.
     #[default]
