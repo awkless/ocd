@@ -173,12 +173,8 @@ impl Cluster {
         //   - There exists a cycle.
         //   - The unvisited nodes represent this cycle.
         if visited.len() != self.nodes.len() {
-            let cycle: Vec<String> = self
-                .nodes
-                .keys()
-                .filter(|key| !visited.contains(*key))
-                .cloned()
-                .collect();
+            let cycle: Vec<String> =
+                self.nodes.keys().filter(|key| !visited.contains(*key)).cloned().collect();
 
             // TODO: Pretty print structure of cycle, besides printing names of problematic nodes.
             return Err(anyhow!("Cluster contains cycle(s): {cycle:?}"));
