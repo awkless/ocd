@@ -43,4 +43,5 @@ toml_edit = "0.22.24"
 [dev-dependencies]
 indoc = "2.0.6"
 pretty_assertions = "1.4.1"
+rstest = "0.25.0"
 sealed_test = "1.1.0"
