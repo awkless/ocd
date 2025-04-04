@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
-
 use crate::cluster::*;
 
 use anyhow::{anyhow, Result};
-use indoc::{indoc, formatdoc};
+use indoc::{formatdoc, indoc};
 use pretty_assertions::assert_eq;
 use rstest::{fixture, rstest};
 use sealed_test::prelude::*;
@@ -136,10 +135,7 @@ fn smoke_cluster_from_str_deserialize_with_expanded_worktrees(config: String) ->
     "#,
     Err(anyhow!("should fail"))
 )]
-fn smoke_cluster_from_str_acylic_check(
-    #[case] nodes: impl AsRef<str>,
-    #[case] expect: Result<()>,
-) {
+fn smoke_cluster_from_str_acylic_check(#[case] nodes: impl AsRef<str>, #[case] expect: Result<()>) {
     match expect {
         Ok(_) => assert!(nodes.as_ref().parse::<Cluster>().is_ok()),
         Err(_) => assert!(nodes.as_ref().parse::<Cluster>().is_err()),

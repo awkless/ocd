@@ -39,7 +39,7 @@
 
 use crate::{
     cluster::{Cluster, Node},
-    utils::{syscall_non_interactive, syscall_interactive, DirLayout},
+    utils::{syscall_interactive, syscall_non_interactive, DirLayout},
 };
 
 use anyhow::{anyhow, Context, Result};
@@ -442,7 +442,7 @@ impl Git {
     /// - Will fail if provided arguments are invalid.
     pub fn bincall_non_interactive(
         &self,
-        args: impl IntoIterator<Item = impl Into<OsString>>
+        args: impl IntoIterator<Item = impl Into<OsString>>,
     ) -> Result<String> {
         let args = self.expand_bin_args(args);
         syscall_non_interactive("git", args)
@@ -471,7 +471,10 @@ impl Git {
         syscall_interactive("git", args)
     }
 
-    fn expand_bin_args(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Vec<OsString> {
+    fn expand_bin_args(
+        &self,
+        args: impl IntoIterator<Item = impl Into<OsString>>,
+    ) -> Vec<OsString> {
         let gitdir: OsString =
             if self.kind == RepoKind::Normal { self.path.join(".git") } else { self.path.clone() }
                 .to_string_lossy()
