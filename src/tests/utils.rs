@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 
-use crate::utils::glob_match;
+use crate::utils::*;
 
+use anyhow::{anyhow, Result};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
+use std::ffi::OsStr;
 
 #[rstest]
 #[case::match_all(["*"], ["foo", "bar", "baz"], ["foo", "bar", "baz"])]
@@ -22,4 +24,36 @@ fn smoke_glob_match(
     expect.sort();
     result.sort();
     assert_eq!(result, expect);
+}
+
+#[rstest]
+#[case("git", ["ls-files", "README.md"], Ok("stdout: README.md\n".into()))]
+#[case("not_found", ["fail"], Err(anyhow!("should fail")))]
+#[case("cd", ["--bad-flag"], Err(anyhow!("should fail")))]
+fn smoke_syscall_non_interactive(
+    #[case] cmd: impl AsRef<OsStr>,
+    #[case] args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+    #[case] expect: Result<String>,
+) {
+    let result = syscall_non_interactive(cmd, args);
+    match expect {
+        Ok(message) => assert_eq!(result.unwrap(), message),
+        Err(_) => assert!(result.is_err()),
+    }
+}
+
+#[rstest]
+#[case("git", ["ls-files", "foo"], Ok(()))]
+#[case("not_found", ["fail"], Err(anyhow!("should fail")))]
+#[case("cd", ["--bad-flag"], Err(anyhow!("should fail")))]
+fn smoke_syscall_interactive(
+    #[case] cmd: impl AsRef<OsStr>,
+    #[case] args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+    #[case] expect: Result<()>,
+) {
+    let result = syscall_interactive(cmd, args);
+    match expect {
+        Ok(_) => assert!(result.is_ok()),
+        Err(_) => assert!(result.is_err()),
+    }
 }
