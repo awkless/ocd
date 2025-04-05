@@ -148,6 +148,7 @@ fn smoke_cluster_from_str_acylic_check(#[case] nodes: impl AsRef<str>, #[case] e
     Ok(Node { url: "https://some/url".into(), ..Default::default() }),
 )]
 #[case::node_nonexistent("foo", Err(anyhow!("should fail")))]
+#[sealed_test(env = [("HOME", "/some/path")])]
 fn smoke_cluster_get_node(
     config: String,
     #[case] node_name: impl AsRef<str>,
