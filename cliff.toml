@@ -91,6 +91,7 @@ commit_parsers = [
     { message = "^doc", group = "Documentation" },
     { message = "^perf", group = "Performance" },
     { message = "^refactor", group = "Refactoring" },
+    { message = "^ref", group = "Refactoring" },
     { message = "^style", group = "Style" },
     { message = "^revert", group = "Revert" },
     { message = "^test", group = "Tests" },

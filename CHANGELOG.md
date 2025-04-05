@@ -6,7 +6,7 @@ SPDX-License-Identifier: MIT or Apache-2.0
 
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
-## [0.6.0](https://github.com/awkless/ocd/compare/v0.4.0..0.6.0) - 2025-04-05
+## [0.5.0](https://github.com/awkless/ocd/compare/v0.4.0..0.5.0) - 2025-04-05
 
 ### Bug Fixes
 
@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file. See [conven
 
 ### Documentation
 
+- *(changelog)* Document version 0.5.0 - ([514417a](https://github.com/awkless/ocd/commit/514417a17370283e46049ef00a0fd189243a7ee2))
 - *(cluster)* Improve documentation of module - ([31c796c](https://github.com/awkless/ocd/commit/31c796cc861bfbc659adf5cae7cb68f65adbc9f7))
 - *(lib)* Add documentation to crate - ([358d3ad](https://github.com/awkless/ocd/commit/358d3adac58bfff1e6aa1455863c0a3122c5225c))
 - *(utils)* Fix API documentation - ([25f7110](https://github.com/awkless/ocd/commit/25f7110e22f6d1247ea2824915bdec96a49af498))
@@ -39,6 +40,7 @@ All notable changes to this project will be documented in this file. See [conven
 ### Refactoring
 
 - *(bin)* Convert to lib+bin crate - ([d377d57](https://github.com/awkless/ocd/commit/d377d5727599a288c6e5ca057e43840126b8934c))
+- *(utils)* Improve interface of `glob_match` - ([3774093](https://github.com/awkless/ocd/commit/37740933acf90392d534619c4c061e309b9afe76))
 - *(utils)* Remove unused crate items - ([32f323f](https://github.com/awkless/ocd/commit/32f323f2ae85f58d5297b0333d7c8882a2dc0a7c))
 - *(vcs)* Merge deployment features into one method - ([cd8a998](https://github.com/awkless/ocd/commit/cd8a998910f7e34125394ae4bc5a34fe4a784047))
 - *(vcs)* Split `Git::bincall` into separate functions - ([431af05](https://github.com/awkless/ocd/commit/431af05515a49ff055099e9dcb587d377317ca0b))
@@ -59,10 +61,6 @@ All notable changes to this project will be documented in this file. See [conven
 - *(utils)* Clean up tests for `glob_match` - ([edfbc4b](https://github.com/awkless/ocd/commit/edfbc4b26676771541c3f3bcd6fd9c581f1d16f2))
 - *(utils)* Move syscall methods into internal `tests` module - ([17cf7ab](https://github.com/awkless/ocd/commit/17cf7ab3b7d375bbfb64d676da060aedeffbc300))
 - Simplify `smoke_glob_match` through `rstest` - ([e0e5647](https://github.com/awkless/ocd/commit/e0e5647107f592c6ade64348159471b781106559))
-
-### Ref
-
-- *(utils)* Improve interface of `glob_match` - ([3774093](https://github.com/awkless/ocd/commit/37740933acf90392d534619c4c061e309b9afe76))
 ## [0.4.0](https://github.com/awkless/ocd/compare/v0.3.0..v0.4.0) - 2025-03-30
 
 ### Documentation
