@@ -6,20 +6,59 @@ SPDX-License-Identifier: MIT or Apache-2.0
 
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
-## [0.5.0](https://github.com/awkless/ocd/compare/v0.4.0..0.5.0) - 2025-04-01
+## [0.6.0](https://github.com/awkless/ocd/compare/v0.4.0..0.6.0) - 2025-04-05
+
+### Bug Fixes
+
+- *(utils)* Make `glob_match` report non-matching patterns - ([f2452a9](https://github.com/awkless/ocd/commit/f2452a98987c219f6042d99f31495412e5b4dd3a))
+
+### Documentation
+
+- *(cluster)* Improve documentation of module - ([31c796c](https://github.com/awkless/ocd/commit/31c796cc861bfbc659adf5cae7cb68f65adbc9f7))
+- *(lib)* Add documentation to crate - ([358d3ad](https://github.com/awkless/ocd/commit/358d3adac58bfff1e6aa1455863c0a3122c5225c))
+- *(utils)* Fix API documentation - ([25f7110](https://github.com/awkless/ocd/commit/25f7110e22f6d1247ea2824915bdec96a49af498))
+- *(vcs)* Improve documentation of module - ([b0159de](https://github.com/awkless/ocd/commit/b0159de2c93e7778ca23b94d2d8f3238403ea5e0))
 
 ### Features
 
 - *(bin)* Add deploy command to CLI - ([d32dda7](https://github.com/awkless/ocd/commit/d32dda7ea7ed3f963bfd2cca13be7909bf8f9745))
 - *(bin)* Add glob matching to git shortcut command - ([a3fdd9c](https://github.com/awkless/ocd/commit/a3fdd9cd9d1f09dffd0baea0a19c83393aa8122c))
+- *(bin)* Add undeploy command to CLI - ([143a441](https://github.com/awkless/ocd/commit/143a4414e0f641539f9167615e732965dc66658c))
 - *(fs)* Add `glob_match` - ([8b89990](https://github.com/awkless/ocd/commit/8b89990a63758029c427324a24ead9b818f08a47))
 - *(fs->utils)* Rename `fs` to `utils` - ([d9a05f5](https://github.com/awkless/ocd/commit/d9a05f5fb51bfe71e8287d88a3326ae3b0c860ff))
+- *(utils)* Add `syscall_interactive` - ([56638d3](https://github.com/awkless/ocd/commit/56638d3933d345c930feb7911d99386f88d53f0f))
 - *(vcs)* Add repository deployment functionality - ([8397d1b](https://github.com/awkless/ocd/commit/8397d1b9b13890676d14a60ff26ddb9187b31ebd))
 
 ### Miscellaneous Chores
 
 - *(cargo)* Add `glob` crate - ([bc45b4a](https://github.com/awkless/ocd/commit/bc45b4a679293981abe8a61db2bd7ca656b915cc))
 - *(cargo)* Bump version to 0.5.0 - ([5f17001](https://github.com/awkless/ocd/commit/5f17001b79bd435ade1b0d05a2bdaedac687f5ea))
+- *(cargo)* Add `rstest` crate - ([75a4eaa](https://github.com/awkless/ocd/commit/75a4eaa243545f188f8a6bf62639c585ae5e8ff6))
+- *(cargo)* Disable tests for OCD binary - ([4abff9a](https://github.com/awkless/ocd/commit/4abff9adedca7c3f224f4375bf92384fd3c278f9))
+
+### Refactoring
+
+- *(bin)* Convert to lib+bin crate - ([d377d57](https://github.com/awkless/ocd/commit/d377d5727599a288c6e5ca057e43840126b8934c))
+- *(utils)* Remove unused crate items - ([32f323f](https://github.com/awkless/ocd/commit/32f323f2ae85f58d5297b0333d7c8882a2dc0a7c))
+- *(vcs)* Merge deployment features into one method - ([cd8a998](https://github.com/awkless/ocd/commit/cd8a998910f7e34125394ae4bc5a34fe4a784047))
+- *(vcs)* Split `Git::bincall` into separate functions - ([431af05](https://github.com/awkless/ocd/commit/431af05515a49ff055099e9dcb587d377317ca0b))
+- Move `vcs::syscall` to `utils::syscall_non_interactive` - ([c69d372](https://github.com/awkless/ocd/commit/c69d372b52e8d378c805ec02d7fa9c5c45b4df93))
+- Thanks clippy - ([59cb5f4](https://github.com/awkless/ocd/commit/59cb5f4da964cb4265e3930f3f35d1ed16dd1098))
+
+### Style
+
+- *(cluster)* Thanks rustfmt - ([eb0b9ec](https://github.com/awkless/ocd/commit/eb0b9ec2f5aa7857ad3755aabdfc690490408132))
+- Thanks rustfmt - ([347a6f6](https://github.com/awkless/ocd/commit/347a6f6e53ea2afd433ec3ab680f3807caa9d356))
+- Thanks rustfmt - ([be5c0a4](https://github.com/awkless/ocd/commit/be5c0a42b791d10487a352b5dc4513b5076e0ec5))
+- Thanks rustfmt - ([1aafd02](https://github.com/awkless/ocd/commit/1aafd029432c4062937e6318923a83c2fdb4bea4))
+
+### Tests
+
+- *(cluster)* Move tests for `Cluster` into `tests` module - ([20819f2](https://github.com/awkless/ocd/commit/20819f25c548e05f33a4a25c02ee94bf56b8f684))
+- *(cluster)* Define $HOME to make test pass on Windows - ([72870d2](https://github.com/awkless/ocd/commit/72870d261e96c42fc27d128a90688c31091f2c74))
+- *(utils)* Clean up tests for `glob_match` - ([edfbc4b](https://github.com/awkless/ocd/commit/edfbc4b26676771541c3f3bcd6fd9c581f1d16f2))
+- *(utils)* Move syscall methods into internal `tests` module - ([17cf7ab](https://github.com/awkless/ocd/commit/17cf7ab3b7d375bbfb64d676da060aedeffbc300))
+- Simplify `smoke_glob_match` through `rstest` - ([e0e5647](https://github.com/awkless/ocd/commit/e0e5647107f592c6ade64348159471b781106559))
 
 ### Ref
 
