@@ -6,7 +6,19 @@ SPDX-License-Identifier: MIT or Apache-2.0
 
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
-## [0.5.0](https://github.com/awkless/ocd/compare/v0.4.0..0.5.0) - 2025-04-05
+## [0.6.0](https://github.com/awkless/ocd/compare/v0.5.0..0.6.0) - 2025-04-06
+
+### Features
+
+- *(bin)* Add `init` command to CLI - ([8f29b60](https://github.com/awkless/ocd/commit/8f29b607c211083e1c7a9ecdfe0d988df3cb94e0))
+- *(cluster)* Add `Cluster::dependency_existence_check` - ([09e6d34](https://github.com/awkless/ocd/commit/09e6d342aed91018f9209d911716c3e50df06223))
+- *(utils)* Add `write_config` - ([d6dcb31](https://github.com/awkless/ocd/commit/d6dcb318d05c0f3c086e7ae3efcb826d389280b4))
+- *(vcs)* Add `init` command to `RootRepo` and `NodeRepo` - ([1a1390d](https://github.com/awkless/ocd/commit/1a1390da3f5f2bf1cdf10ee1bca6b2293d14b3ea))
+
+### Miscellaneous Chores
+
+- *(cargo)* Bump version to 0.6.0 - ([855d794](https://github.com/awkless/ocd/commit/855d79422a359bf28fe0a8b612208e68b8c3c1a3))
+## [0.5.0](https://github.com/awkless/ocd/compare/v0.4.0..v0.5.0) - 2025-04-05
 
 ### Bug Fixes
 
@@ -36,6 +48,7 @@ All notable changes to this project will be documented in this file. See [conven
 - *(cargo)* Bump version to 0.5.0 - ([5f17001](https://github.com/awkless/ocd/commit/5f17001b79bd435ade1b0d05a2bdaedac687f5ea))
 - *(cargo)* Add `rstest` crate - ([75a4eaa](https://github.com/awkless/ocd/commit/75a4eaa243545f188f8a6bf62639c585ae5e8ff6))
 - *(cargo)* Disable tests for OCD binary - ([4abff9a](https://github.com/awkless/ocd/commit/4abff9adedca7c3f224f4375bf92384fd3c278f9))
+- *(cliff)* Move commit groups "ref" to "refactoring" - ([5efff1e](https://github.com/awkless/ocd/commit/5efff1ef91e17b1b41f002b636fce68baa9dc0b6))
 
 ### Refactoring
 
