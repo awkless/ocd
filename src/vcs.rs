@@ -46,7 +46,7 @@ use anyhow::{anyhow, Context, Result};
 use auth_git2::{GitAuthenticator, Prompter};
 use beau_collector::BeauCollector as _;
 use futures::{stream, StreamExt};
-use git2::{build::RepoBuilder, FetchOptions, RemoteCallbacks};
+use git2::{build::RepoBuilder, FetchOptions, RemoteCallbacks, Repository, RepositoryInitOptions};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use inquire::{Password, Text};
 use std::{
@@ -134,6 +134,16 @@ impl RootRepo {
             .parse::<Cluster>()
     }
 
+    /// Initialize new root repository.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if repository cannot be initialized for whatever reason.
+    pub fn init(&self) -> Result<()> {
+        log::info!("initialize root repository {}", self.0.path.display());
+        self.0.init()
+    }
+
     /// Determine how to deploy index of repository.
     ///
     /// # Errors
@@ -185,6 +195,16 @@ impl NodeRepo {
     pub(crate) fn with_progress_bar(mut self, kind: ProgressBarKind) -> Self {
         self.0 = self.0.with_auth_prompt(ProgressBarAuth::new(kind));
         self
+    }
+
+    /// Initialize new node repository.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if repository cannot be initialized for whatever reason.
+    pub fn init(&self) -> Result<()> {
+        log::info!("initialize node repository {}", self.0.path.display());
+        self.0.init()
     }
 
     /// Determine how to deploy index of repository.
@@ -343,6 +363,29 @@ impl Git {
     /// Get path to repository.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Initialize new empty repository.
+    ///
+    /// Will enable sparse checkout, and disable untracked file status for bare or bare-alias
+    /// repositories.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if repository cannot be initialized at target path.
+    /// - Will fail if repository cannot set default configuration settings when needed.
+    pub fn init(&self) -> Result<()> {
+        let mut opts = RepositoryInitOptions::new();
+        opts.bare(self.kind.is_bare());
+        let repo = Repository::init_opts(&self.path, &opts)?;
+
+        if self.kind.is_bare() {
+            let mut config = repo.config()?;
+            config.set_str("status.showUntrackedFiles", "no")?;
+            config.set_str("core.sparseCheckout", "true")?;
+        }
+
+        Ok(())
     }
 
     /// Clone repository with progress bar output.
