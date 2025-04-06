@@ -36,6 +36,7 @@
 //! definition are managed through version control.
 
 use anyhow::{anyhow, Context, Result};
+use beau_collector::BeauCollector as _;
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
@@ -51,6 +52,7 @@ use toml_edit::{Array, DocumentMut, Item, Key, Table, Value};
 ///
 /// # Invariants
 ///
+/// - Node dependencies exist in cluster.
 /// - Node dependencies are acyclic.
 /// - Worktree paths are always expanded.
 #[derive(Default, Debug)]
@@ -134,6 +136,21 @@ impl Cluster {
         self.nodes
             .remove(node.as_ref())
             .ok_or(anyhow!("Node '{}' not defined in hashmap", node.as_ref()))
+    }
+
+    fn dependency_existence_check(&self) -> Result<()> {
+        let mut results = Vec::new();
+        for node in self.nodes.values() {
+            for depend in node.depends.iter().flatten() {
+                if !self.nodes.contains_key(depend) {
+                    results.push(Err(anyhow!("Dependency {depend:?} not defined in cluster")));
+                } else {
+                    results.push(Ok(()));
+                }
+            }
+        }
+
+        results.into_iter().bcollect()
     }
 
     fn acyclic_check(&self) -> Result<()> {
@@ -226,6 +243,7 @@ impl std::str::FromStr for Cluster {
         };
 
         let mut cluster = Self { root, nodes, document };
+        cluster.dependency_existence_check()?;
         cluster.acyclic_check()?;
         cluster.expand_worktrees()?;
 
@@ -351,7 +369,7 @@ impl Node {
         }
 
         if let Some(depends) = &self.depends {
-            node.insert("excludes", Item::Value(Value::Array(Array::from_iter(depends))));
+            node.insert("depends", Item::Value(Value::Array(Array::from_iter(depends))));
         }
 
         let key = Key::new(name);
