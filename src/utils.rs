@@ -11,7 +11,7 @@ use anyhow::{anyhow, Context, Result};
 use mkdirp::mkdirp;
 use std::{
     ffi::{OsStr, OsString},
-    io::Read,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -95,6 +95,34 @@ where
 
     let config: C = buffer.parse()?;
     Ok(config)
+}
+
+/// Serialize and write contents configuration to target file.
+///
+/// General helper that uses type annotations to determine the correct type to serialize given
+/// configuration for writing to a target file. Will create an empty configuration file if it does
+/// not already exist.
+///
+/// # Errors
+///
+/// - Will fail if path cannot be opened or created.
+/// - Will fail if serialized configuration data cannot be written to target file.
+pub fn write_config<C>(path: impl AsRef<Path>, dirs: &DirLayout, config: &C) -> Result<()>
+where
+    C: std::fmt::Display,
+{
+    let full_path = dirs.config().join(path.as_ref());
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(false)
+        .read(true)
+        .create(true)
+        .open(full_path)?;
+
+    let serialize = config.to_string();
+    file.write_all(serialize.as_bytes())?;
+
+    Ok(())
 }
 
 /// Use Unix-like glob pattern matching.
