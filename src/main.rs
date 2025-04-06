@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: MIT or Apache-2.0
 
 use ocd::{
-    cluster::Cluster,
-    utils::{glob_match, read_config, DirLayout},
+    cluster::{Cluster, Node},
+    utils::{glob_match, read_config, write_config, DirLayout},
     vcs::{Deployment, MultiNodeClone, NodeRepo, RootRepo},
 };
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::{Args, Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
-use std::{ffi::OsString, fs::remove_dir_all, process};
+use std::{ffi::OsString, fs::remove_dir_all, path::PathBuf, process};
 
 /// Command-line interface of OCD tool.
 #[derive(Debug, Parser)]
@@ -31,6 +31,9 @@ pub struct Cli {
 /// Full command set.
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    #[command(override_usage = "ocd init [options] <node_name>")]
+    Init(InitOptions),
+
     #[command(override_usage = "ocd clone [options] <url>")]
     Clone(CloneOptions),
 
@@ -42,6 +45,22 @@ pub enum Command {
 
     #[command(external_subcommand)]
     Git(Vec<OsString>),
+}
+
+/// Initialize new repository.
+#[derive(Args, Debug)]
+pub struct InitOptions {
+    /// Name of new repository to Initialize.
+    #[arg(group = "cluster", value_name = "node_name")]
+    pub node_name: Option<String>,
+
+    /// Mark repository as root of cluster.
+    #[arg(group = "cluster", short, long)]
+    pub root: bool,
+
+    /// Mark directory as worktree-alias (makes node repositories bare-alias).
+    #[arg(short, long, value_name = "dir_path")]
+    pub worktree_alias: Option<PathBuf>,
 }
 
 /// Clone existing cluster.
@@ -115,6 +134,28 @@ async fn run() -> Result<ExitCode> {
 
     let dirs = DirLayout::new()?;
     match cli.command {
+        Command::Init(args) => {
+            let mut cluster: Cluster = read_config("cluster.toml", &dirs)?;
+
+            if args.root {
+                cluster.root.worktree = args.worktree_alias;
+                let root = RootRepo::from_cluster(&cluster, &dirs);
+                root.init()?;
+            } else {
+                let node = Node {
+                    bare_alias: args.worktree_alias.is_some(),
+                    worktree: args.worktree_alias,
+                    url: "fill this in".into(),
+                    ..Default::default()
+                };
+                let name = args.node_name.ok_or(anyhow!("No name given"))?;
+                let repo = NodeRepo::new(&name, &node, &dirs);
+                cluster.add_node((&name, node))?;
+                repo.init()?;
+            }
+
+            write_config("cluster.toml", &dirs, &cluster)?;
+        }
         Command::Clone(args) => {
             let root = RootRepo::new_clone(args.url, &dirs).inspect_err(|_| {
                 remove_dir_all(dirs.data()).ok();
