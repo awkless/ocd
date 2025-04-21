@@ -39,10 +39,13 @@
 //!
 //! [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles#Tracking_dotfiles_directly_with_Git
 
+pub(crate) mod path;
+
 /// All possible error variants that OCD can encounter during runtime.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    // TODO: Add error stuff here.
+    #[error("Cannot determine path to home directory")]
+    NoWayHome,
 }
 
 /// Wrapper to make it easy to specify [`Result`] using [`Error`].
