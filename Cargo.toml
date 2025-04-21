@@ -29,3 +29,4 @@ opt-level = 1
 
 [dependencies]
 clap = { version = "4.5.37", features = ["derive"] }
+thiserror = "2.0.12"
