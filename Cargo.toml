@@ -28,3 +28,4 @@ opt-level = 3
 opt-level = 1
 
 [dependencies]
+clap = { version = "4.5.37", features = ["derive"] }
