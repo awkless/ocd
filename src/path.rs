@@ -20,3 +20,14 @@ use std::path::PathBuf;
 pub fn home_dir() -> Result<PathBuf> {
     dirs::home_dir().ok_or(Error::NoWayHome)
 }
+
+/// Get absolute path to OCD's configuration directory.
+///
+/// # Errors
+///
+/// - Return [`Error::NoWayConfig`] if path to configuration directory cannot be determined.
+///
+/// [`Error::NoWayConfig`]: crate::Error::NoWayConfig
+pub fn config_dir() -> Result<PathBuf> {
+    dirs::config_dir().and_then(|path| Some(path.join("ocd"))).ok_or(Error::NoWayConfig)
+}

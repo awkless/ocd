@@ -46,6 +46,9 @@ pub(crate) mod path;
 pub enum Error {
     #[error("Cannot determine path to home directory")]
     NoWayHome,
+
+    #[error("Cannot determine path to configuration directory")]
+    NoWayConfig,
 }
 
 /// Wrapper to make it easy to specify [`Result`] using [`Error`].
