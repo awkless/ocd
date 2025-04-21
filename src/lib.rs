@@ -39,6 +39,7 @@
 //!
 //! [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles#Tracking_dotfiles_directly_with_Git
 
+pub(crate) mod model;
 pub(crate) mod path;
 
 /// All possible error variants that OCD can encounter during runtime.
