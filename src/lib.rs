@@ -39,6 +39,8 @@
 //!
 //! [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles#Tracking_dotfiles_directly_with_Git
 
+#![allow(dead_code)]
+
 pub(crate) mod model;
 pub(crate) mod path;
 
@@ -53,6 +55,9 @@ pub enum Error {
 
     #[error(transparent)]
     Toml(#[from] toml_edit::TomlError),
+
+    #[error("Cluster contains cycle(s): {cycle:?}")]
+    CircularDependencies { cycle: Vec<String> },
 }
 
 impl From<Error> for i32 {
@@ -60,7 +65,8 @@ impl From<Error> for i32 {
         match error {
             Error::NoWayHome => exitcode::IOERR,
             Error::NoWayConfig => exitcode::IOERR,
-            Error::Toml(_) => exitcode::CONFIG,
+            Error::Toml(..) => exitcode::CONFIG,
+            Error::CircularDependencies { .. } => exitcode::CONFIG,
         }
     }
 }

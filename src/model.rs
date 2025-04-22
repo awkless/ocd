@@ -11,8 +11,12 @@ use crate::{
     Error, Result,
 };
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    path::PathBuf,
+};
 use toml_edit::{DocumentMut, Item, Table};
+use tracing::{debug, instrument};
 
 /// Format preserving cluster definition parser.
 ///
@@ -41,6 +45,63 @@ impl Cluster {
     pub fn new() -> Self {
         Cluster::default()
     }
+
+    #[instrument(skip(self))]
+    fn acyclic_check(&self) -> Result<()> {
+        let mut in_degree: HashMap<String, usize> = HashMap::new();
+        let mut queue: VecDeque<String> = VecDeque::new();
+        let mut visited: HashSet<String> = HashSet::new();
+
+        // INVARIANT: The in-degree of each node is the sum of all incoming edges to each
+        // destination node.
+        for (name, node) in &self.nodes {
+            in_degree.entry(name.clone()).or_insert(0);
+            for dependency in node.dependencies.iter().flatten() {
+                *in_degree.entry(dependency.clone()).or_insert(0) += 1;
+            }
+        }
+
+        // INVARIANT: Queue always contains nodes with in-degree of 0, i.e., nodes with no incoming
+        // edges.
+        for (name, degree) in &in_degree {
+            if *degree == 0 {
+                queue.push_back(name.clone());
+            }
+        }
+
+        // BFS traversal such that the in-degree of all dependencies of a popped node from queue is
+        // decremented by one. If a given dependency's in-degree becomes zero, push it into the
+        // queue to be traversed. Finally, mark the currently popped node as visisted.
+        while let Some(current) = queue.pop_front() {
+            for dependency in self.nodes[&current].dependencies.iter().flatten() {
+                *in_degree.get_mut(dependency).unwrap() -= 1;
+                if *in_degree.get(dependency).unwrap() == 0 {
+                    queue.push_back(dependency.clone());
+                }
+            }
+            // INVARIANT: Visited nodes represent the topological sort of graph.
+            visited.insert(current);
+        }
+
+        // INVARIANT: Queue is empty, but graph has not been fully visited.
+        //   - There exists a cycle.
+        //   - The unvisited nodes represent this cycle.
+        if visited.len() != self.nodes.len() {
+            let cycle: Vec<String> = self
+                .nodes
+                .keys()
+                .filter(|key| !visited.contains(*key))
+                .cloned()
+                .collect();
+
+            // TODO: Pretty print structure of cycle, besides printing names of problematic nodes.
+            return Err(Error::CircularDependencies { cycle });
+        }
+
+        debug!("Topological sort of cluster nodes: {visited:?}");
+
+        Ok(())
+    }
 }
 
 impl std::str::FromStr for Cluster {
@@ -59,11 +120,14 @@ impl std::str::FromStr for Cluster {
             HashMap::new()
         };
 
-        Ok(Self {
+        let cluster = Self {
             root,
             nodes,
             document,
-        })
+        };
+        cluster.acyclic_check()?;
+
+        Ok(cluster)
     }
 }
 
@@ -104,6 +168,7 @@ impl<'toml> TryFrom<&'toml Table> for RootEntry {
         let dir_alias = table
             .get("dir_alias")
             .and_then(|alias| alias.as_str().map(Into::into))
+            // INVARIANT: Default to configuration directory path if `None`.
             .unwrap_or(config_dir()?);
         root.dir_alias = DirAlias::new(dir_alias);
 
@@ -148,12 +213,24 @@ impl<'toml> TryFrom<&'toml Item> for NodeEntry {
         let mut node = NodeEntry::new();
 
         node.deployment = if let Some(deployment) = item.get("deployment") {
+            // INVARIANT: Allow deserialization from `&str` value.
+            //   - Accept "normal" as `DeploymentKind::Normal`.
+            //   - Accept "bare_alias` as `DeploymentKind::BareAlias(..)` such that it falls back
+            //     on user's home directory path as the default.
+            //   - Default to `DeploymentKind::default` for any other `&str`.
             if let Some(entry) = deployment.as_str() {
                 match entry {
                     "normal" => DeploymentKind::Normal,
                     "bare_alias" => DeploymentKind::BareAlias(DirAlias::new(home_dir()?)),
                     &_ => DeploymentKind::default(),
                 }
+            // INVARIANT: Allow deserialization from `&InlineTable`.
+            //   - Accept "{ kind = "normal" }" as `DeploymentKind::Normal`.
+            //   - Accept "{ kind = "bare_alias", dir_alias = "<path>" }" as
+            //     `DeploymentKind::BareAlias(DirAlias(<path>))`.
+            //   - Accept "{ kind = "bare_alias" }" by falling back on user's home directory path
+            //     as the default for `DeploymentKind::BareAlias(..)`.
+            //   - Default to `DeploymentKind::default` for any other `&str`.
             } else {
                 let kind = deployment
                     .get("kind")
@@ -169,6 +246,7 @@ impl<'toml> TryFrom<&'toml Item> for NodeEntry {
                     &_ => DeploymentKind::default(),
                 }
             }
+        // INVARIANT: Use `DeploymentKind::default` if "deployment" field was never defined.
         } else {
             DeploymentKind::default()
         };
@@ -354,5 +432,71 @@ mod tests {
         pretty_assertions::assert_eq!(result, expect);
 
         Ok(())
+    }
+
+    #[test_case(
+        r#"
+            [nodes.foo]
+            deployment = "normal"
+            url = "https://some/url"
+        "#,
+        Ok(());
+        "single node"
+    )]
+    #[test_case(
+        r#"
+            [nodes.foo]
+            deployment = "normal"
+            url = "https://some/url"
+
+            [nodes.bar]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["foo"]
+
+            [nodes.baz]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["bar"]
+        "#,
+        Ok(());
+        "fully acyclic"
+    )]
+    #[test_case(
+        r#"
+            [nodes.foo]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["foo"]
+        "#,
+        Err(anyhow::anyhow!("should fail"));
+        "depend self"
+    )]
+    #[test_case(
+        r#"
+            [nodes.foo]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["bar"]
+
+            [nodes.bar]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["baz"]
+
+            [nodes.baz]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["foo"]
+        "#,
+        Err(anyhow::anyhow!("should fail"));
+        "fully circular"
+    )]
+    #[test]
+    fn smoke_cluster_from_str_acyclic_check(config: &str, expect: Result<(), anyhow::Error>) {
+        match expect {
+            Ok(_) => assert!(config.parse::<Cluster>().is_ok()),
+            Err(_) => assert!(config.parse::<Cluster>().is_err()),
+        }
     }
 }
