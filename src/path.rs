@@ -29,5 +29,7 @@ pub fn home_dir() -> Result<PathBuf> {
 ///
 /// [`Error::NoWayConfig`]: crate::Error::NoWayConfig
 pub fn config_dir() -> Result<PathBuf> {
-    dirs::config_dir().and_then(|path| Some(path.join("ocd"))).ok_or(Error::NoWayConfig)
+    dirs::config_dir()
+        .and_then(|path| Some(path.join("ocd")))
+        .ok_or(Error::NoWayConfig)
 }
