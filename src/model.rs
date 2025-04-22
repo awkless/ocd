@@ -53,9 +53,9 @@ impl Cluster {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::TomlNotTable`] if "nodes" was defined, but not as a table as expected.
+    /// - Return [`Error::EntryNotTable`] if "nodes" was defined, but not as a table as expected.
     ///
-    /// [`Error::TomlNotTable`]: crate::Error::TomlNotTable
+    /// [`Error::EntryNotTable`]: crate::Error::EntryNotTable
     pub fn add_node(
         &mut self,
         name: impl AsRef<str>,
@@ -63,7 +63,7 @@ impl Cluster {
     ) -> Result<Option<NodeEntry>> {
         let (key, item) = node.to_toml(name.as_ref());
         let table = if let Some(item) = self.document.get_mut("nodes") {
-            item.as_table_mut().ok_or(Error::TomlNotTable {
+            item.as_table_mut().ok_or(Error::EntryNotTable {
                 name: "nodes".into(),
             })?
         } else {
@@ -80,6 +80,32 @@ impl Cluster {
         table.insert_formatted(&key, item);
 
         Ok(self.nodes.insert(name.as_ref().into(), node))
+    }
+
+    /// Remove existing node entry from cluster definition.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::EntryNotFound`] if "nodes" table or node entry itself cannot be found.
+    ///
+    /// [`Error::EntryNotFound`]: crate::Error::EntryNotFound
+    pub fn remove_node(&mut self, node: impl AsRef<str>) -> Result<NodeEntry> {
+        self.document
+            .get_mut("nodes")
+            .and_then(|item| item.as_table_mut())
+            .ok_or(Error::EntryNotFound {
+                name: "nodes".into(),
+            })?
+            .remove(node.as_ref())
+            .ok_or(Error::EntryNotFound {
+                name: node.as_ref().into(),
+            })?;
+
+        self.nodes
+            .remove(node.as_ref())
+            .ok_or(Error::EntryNotFound {
+                name: node.as_ref().into(),
+            })
     }
 
     /// Iterate through all dependencies of a target node entry.
@@ -798,6 +824,71 @@ mod tests {
                 pretty_assertions::assert_eq!(cluster.to_string(), str_expect);
             }
             Err(_) => assert!(cluster.add_node(key, item).is_err()),
+        }
+
+        Ok(())
+    }
+
+    #[test_case(
+        indoc! {r#"
+            # This comment should remain!
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+
+            [nodes.st]
+            deployment = "normal"
+            url = "https://some/url"
+        "#},
+        "st",
+        indoc! {r#"
+            # This comment should remain!
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+        "#},
+        Ok(
+            NodeEntry {
+                url: "https://some/url".into(),
+                ..Default::default()
+            }
+        );
+        "remove node"
+    )]
+    #[test_case(
+        r#"nodes = "should fail""#,
+        "should fail",
+        "should fail",
+        Err(anyhow::anyhow!("should fail"));
+        "not table"
+    )]
+    #[test_case(
+        indoc! {r#"
+            # This comment should remain!
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+        "#},
+        "non-existent",
+        "should fail",
+        Err(anyhow::anyhow!("should fail"));
+        "node entry not found"
+    )]
+    #[test]
+    fn smoke_cluster_remove_node(
+        config: &str,
+        key: &str,
+        str_expect: &str,
+        ret_expect: Result<NodeEntry, anyhow::Error>,
+    ) -> Result<()> {
+        let mut cluster: Cluster = config.parse()?;
+        match ret_expect {
+            Ok(expect) => {
+                let result = cluster.remove_node(key)?;
+                pretty_assertions::assert_eq!(result, expect);
+                pretty_assertions::assert_eq!(cluster.to_string(), str_expect);
+            }
+            Err(_) => assert!(cluster.remove_node(key).is_err()),
         }
 
         Ok(())
