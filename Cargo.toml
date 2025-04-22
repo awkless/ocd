@@ -32,6 +32,7 @@ anyhow = "1.0.98"
 clap = { version = "4.5.37", features = ["derive"] }
 dirs = "6.0.0"
 exitcode = "1.1.2"
+shellexpand = "3.1.1"
 thiserror = "2.0.12"
 tokio = { version = "1.44.2", features = ["full"] }
 toml_edit = "0.22.24"
