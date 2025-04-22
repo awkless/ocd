@@ -46,6 +46,15 @@ impl Cluster {
         Cluster::default()
     }
 
+    /// Iterate through all dependencies of a target node entry.
+    ///
+    /// Provides full path through each dependency of target node inclusively.
+    pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
+        let mut stack = VecDeque::new();
+        stack.push_front(node.into());
+        DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
+    }
+
     #[instrument(skip(self))]
     fn acyclic_check(&self) -> Result<()> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
@@ -128,6 +137,40 @@ impl std::str::FromStr for Cluster {
         cluster.acyclic_check()?;
 
         Ok(cluster)
+    }
+}
+
+/// Iterator for generating valid node entry dependency paths.
+///
+/// # Invariants
+///
+/// Nodes and their dependencies are acyclic.
+#[derive(Debug)]
+pub struct DependencyIter<'cluster> {
+    graph: &'cluster HashMap<String, NodeEntry>,
+    visited: HashSet<String>,
+    stack: VecDeque<String>,
+}
+
+impl<'cluster> Iterator for DependencyIter<'cluster> {
+    type Item = (&'cluster str, &'cluster NodeEntry);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // INVARIANT: Nodes and their dependencies are acyclic through acyclic check performed
+        // during deserialization through `Cluster::from_str`.
+        if let Some(node) = self.stack.pop_front() {
+            let (name, node) = self.graph.get_key_value(&node)?;
+            for dependency in node.dependencies.iter().flatten() {
+                if !self.visited.contains(dependency) {
+                    self.stack.push_front(dependency.clone());
+                    self.visited.insert(dependency.clone());
+                }
+            }
+
+            return Some((name.as_ref(), node));
+        }
+
+        None
     }
 }
 
@@ -498,5 +541,88 @@ mod tests {
             Ok(_) => assert!(config.parse::<Cluster>().is_ok()),
             Err(_) => assert!(config.parse::<Cluster>().is_err()),
         }
+    }
+
+    #[test_case(
+        r#"
+            [nodes.sh]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["ps1"]
+
+            [nodes.ps1]
+            deployment = "normal"
+            url = "https://some/url"
+
+            [nodes.bash]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["sh"]
+        "#,
+        vec![
+            (
+                "sh",
+                NodeEntry {
+                    url: "https://some/url".into(),
+                    dependencies: Some(vec!["ps1".into()]),
+                    ..Default::default()
+                }
+            ),
+            (
+                "ps1",
+                NodeEntry {
+                    url: "https://some/url".into(),
+                    ..Default::default()
+                }
+            ),
+            (
+                "bash",
+                NodeEntry {
+                    url: "https://some/url".into(),
+                    dependencies: Some(vec!["sh".into()]),
+                    ..Default::default()
+                }
+            ),
+        ];
+        "full path"
+    )]
+    #[test_case(
+        r#"
+            [nodes.bash]
+            deployment = "normal"
+            url = "https://some/url"
+        "#,
+        vec![
+            (
+                "bash",
+                NodeEntry {
+                    url: "https://some/url".into(),
+                    ..Default::default()
+                }
+            ),
+        ];
+        "no dependencies"
+    )]
+    #[test_case(
+        r#"
+            [nodes.foo]
+            deployment = "normal"
+            url = "https://some/url"
+        "#,
+        vec![];
+        "no path"
+    )]
+    #[test]
+    fn smoke_cluster_dependency_iter(config: &str, mut expect: Vec<(&str, NodeEntry)>) -> Result<()> {
+        let cluster: Cluster = config.parse()?;
+        let mut result: Vec<(&str, NodeEntry)> = cluster
+            .dependency_iter("bash")
+            .map(|(name, node)| (name, node.clone()))
+            .collect();
+
+        result.sort_by(|(a, _), (b, _)| a.cmp(b));
+        expect.sort_by(|(a, _), (b, _)| a.cmp(b));
+        pretty_assertions::assert_eq!(result, expect);
+        Ok(())
     }
 }
