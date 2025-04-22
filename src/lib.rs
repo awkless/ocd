@@ -50,6 +50,9 @@ pub enum Error {
 
     #[error("Cannot determine path to configuration directory")]
     NoWayConfig,
+
+    #[error(transparent)]
+    Toml(#[from] toml_edit::TomlError),
 }
 
 /// Wrapper to make it easy to specify [`Result`] using [`Error`].

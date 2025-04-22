@@ -6,8 +6,13 @@
 //! Contains various types that represent, and help manipulate OCD's data model. Currently, the
 //! [`Cluster`] type is provided as a format preserving cluster definition parser.
 
+use crate::{
+    path::{config_dir, home_dir},
+    Error, Result,
+};
+
 use std::{collections::HashMap, path::PathBuf};
-use toml_edit::DocumentMut;
+use toml_edit::{DocumentMut, Item, Table};
 
 /// Format preserving cluster definition parser.
 ///
@@ -38,8 +43,32 @@ impl Cluster {
     }
 }
 
+impl std::str::FromStr for Cluster {
+    type Err = Error;
+
+    fn from_str(data: &str) -> Result<Self, Self::Err> {
+        let document: DocumentMut = data.parse()?;
+        let root = RootEntry::try_from(document.as_table())?;
+        let nodes = if let Some(entries) = document.get("nodes").and_then(|node| node.as_table()) {
+            let mut nodes: HashMap<String, NodeEntry> = HashMap::new();
+            for (key, value) in entries.iter() {
+                nodes.insert(key.into(), NodeEntry::try_from(value)?);
+            }
+            nodes
+        } else {
+            HashMap::new()
+        };
+
+        Ok(Self {
+            root,
+            nodes,
+            document,
+        })
+    }
+}
+
 /// Root entry of cluster definition.
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct RootEntry {
     /// Target directory to act as worktree alias for deployment.
     pub dir_alias: DirAlias,
@@ -55,8 +84,43 @@ impl RootEntry {
     }
 }
 
+impl<'toml> TryFrom<&'toml Table> for RootEntry {
+    type Error = Error;
+
+    /// Try to deserialize TOML table to [`RootEntry`].
+    ///
+    /// If field `dir_alias` is not defined, then it will default to using OCD's configuration
+    /// directory path.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::NoWayConfig`] if OCD's configuration directory path could not be
+    ///   determined.
+    ///
+    /// [`Error::NoWayConfig`]: crate::Error::NoWayConfig
+    fn try_from(table: &'toml Table) -> Result<Self, Self::Error> {
+        let mut root = RootEntry::new();
+
+        let dir_alias = table
+            .get("dir_alias")
+            .and_then(|alias| alias.as_str().map(Into::into))
+            .unwrap_or(config_dir()?);
+        root.dir_alias = DirAlias::new(dir_alias);
+
+        root.excluded = table.get("excluded").and_then(|rules| {
+            rules.as_array().map(|arr| {
+                arr.into_iter()
+                    .map(|rule| rule.as_str().unwrap_or_default().into())
+                    .collect()
+            })
+        });
+
+        Ok(root)
+    }
+}
+
 /// Node entry for cluster configuration.
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct NodeEntry {
     /// Method of deployment for node entry.
     pub deployment: DeploymentKind,
@@ -69,6 +133,69 @@ pub struct NodeEntry {
 
     /// List of node dependencies to include for deployment.
     pub dependencies: Option<Vec<String>>,
+}
+
+impl NodeEntry {
+    pub fn new() -> Self {
+        NodeEntry::default()
+    }
+}
+
+impl<'toml> TryFrom<&'toml Item> for NodeEntry {
+    type Error = Error;
+
+    fn try_from(item: &'toml Item) -> Result<Self, Self::Error> {
+        let mut node = NodeEntry::new();
+
+        node.deployment = if let Some(deployment) = item.get("deployment") {
+            if let Some(entry) = deployment.as_str() {
+                match entry {
+                    "normal" => DeploymentKind::Normal,
+                    "bare_alias" => DeploymentKind::BareAlias(DirAlias::new(home_dir()?)),
+                    &_ => DeploymentKind::default(),
+                }
+            } else {
+                let kind = deployment
+                    .get("kind")
+                    .and_then(|kind| kind.as_str())
+                    .unwrap_or_default();
+                let alias = deployment
+                    .get("dir_alias")
+                    .and_then(|alias| alias.as_str().map(Into::into))
+                    .unwrap_or(home_dir()?);
+                match kind {
+                    "normal" => DeploymentKind::Normal,
+                    "bare_alias" => DeploymentKind::BareAlias(DirAlias::new(alias)),
+                    &_ => DeploymentKind::default(),
+                }
+            }
+        } else {
+            DeploymentKind::default()
+        };
+
+        node.url = item
+            .get("url")
+            .and_then(|url| url.as_str().map(Into::into))
+            .unwrap_or_default();
+
+        node.excluded = item.get("excluded").and_then(|rules| {
+            rules.as_array().map(|arr| {
+                arr.into_iter()
+                    .map(|rule| rule.as_str().unwrap_or_default().into())
+                    .collect()
+            })
+        });
+
+        node.dependencies = item.get("dependencies").and_then(|deps| {
+            deps.as_array().map(|arr| {
+                arr.into_iter()
+                    .map(|dep| dep.as_str().unwrap_or_default().into())
+                    .collect()
+            })
+        });
+
+        Ok(node)
+    }
 }
 
 /// The variants of node deployment.
@@ -90,5 +217,142 @@ impl DirAlias {
     /// Construct new directory alias from given path.
     pub(crate) fn new(path: impl Into<PathBuf>) -> Self {
         Self(path.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use sealed_test::prelude::*;
+    use simple_test_case::test_case;
+
+    #[test_case(
+        r#"
+            dir_alias = "/some/path"
+            excluded = ["rule1", "rule2", "rule3"]
+        "#,
+        RootEntry {
+            dir_alias: DirAlias::new("/some/path"),
+            excluded: Some(vec!["rule1".into(), "rule2".into(), "rule3".into()]),
+        };
+        "full fields"
+    )]
+    #[test_case(
+        "",
+        RootEntry {
+            dir_alias: DirAlias::new("/home/user/.config/ocd"),
+            excluded: None,
+        };
+        "missing all fields"
+    )]
+    #[sealed_test(env = [("HOME", "/home/user"), ("XDG_CONFIG_HOME", "/home/user/.config")])]
+    fn smoke_cluster_from_str_root_deserialize(config: &str, expect: RootEntry) -> Result<()> {
+        let cluster: Cluster = config.parse()?;
+        pretty_assertions::assert_eq!(cluster.root, expect);
+        Ok(())
+    }
+
+    #[test_case(
+        r#"
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+
+            [nodes.st]
+            deployment = { kind = "normal" }
+            url = "https://some/url"
+            dependencies = ["prompt"]
+            excluded = ["rule1", "rule2", "rule3"]
+
+            [nodes.sh]
+            deployment = "bare_alias"
+            url = "https://some/url"
+            dependencies = ["prompt"]
+
+            [nodes.prompt]
+            deployment = { kind = "bare_alias", dir_alias = "/some/path" }
+            url = "https://some/url"
+            excluded = ["rule1", "rule2", "rule3"]
+        "#,
+        vec![
+            (
+                "dwm".into(),
+                NodeEntry {
+                    deployment: DeploymentKind::Normal,
+                    url: "https://some/url".into(),
+                    ..Default::default()
+                }
+            ),
+            (
+                "st".into(),
+                NodeEntry {
+                    deployment: DeploymentKind::Normal,
+                    url: "https://some/url".into(),
+                    dependencies: Some(vec!["prompt".into()]),
+                    excluded: Some(vec!["rule1".into(), "rule2".into(), "rule3".into()]),
+                }
+            ),
+            (
+                "sh".into(),
+                NodeEntry {
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("/home/user")),
+                    url: "https://some/url".into(),
+                    dependencies: Some(vec!["prompt".into()]),
+                    ..Default::default()
+                }
+            ),
+            (
+                "prompt".into(),
+                NodeEntry {
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path")),
+                    url: "https://some/url".into(),
+                    excluded: Some(vec!["rule1".into(), "rule2".into(), "rule3".into()]),
+                    ..Default::default()
+                }
+            ),
+        ];
+        "full node set"
+    )]
+    #[test_case(
+        r#"
+            [nodes.dwm]
+            url = "https://some/url"
+
+            [nodes.st]
+            deployment = "normal"
+        "#,
+        vec![
+            (
+                "dwm".into(),
+                NodeEntry {
+                    url: "https://some/url".into(),
+                    ..Default::default()
+                }
+            ),
+            (
+                "st".into(),
+                NodeEntry {
+                    ..Default::default()
+                }
+            ),
+        ];
+        "missing fields"
+    )]
+    #[sealed_test(env = [("HOME", "/home/user")])]
+    fn smoke_cluster_from_str_node_deserialize(
+        config: &str,
+        mut expect: Vec<(String, NodeEntry)>,
+    ) -> Result<()> {
+        let cluster: Cluster = config.parse()?;
+        let mut result = cluster
+            .nodes
+            .into_iter()
+            .collect::<Vec<(String, NodeEntry)>>();
+        result.sort_by(|(a, _), (b, _)| a.cmp(b));
+        expect.sort_by(|(a, _), (b, _)| a.cmp(b));
+        pretty_assertions::assert_eq!(result, expect);
+
+        Ok(())
     }
 }
