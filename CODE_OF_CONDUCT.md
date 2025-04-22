@@ -1,6 +1,6 @@
 <!--
 SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
-SPDX-License-Identifier: MIT or Apache-2.0
+SPDX-License-Identifier: MIT
 -->
 
 # Contributor Covenant Code of Conduct
