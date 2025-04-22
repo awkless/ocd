@@ -32,6 +32,7 @@ clap = { version = "4.5.37", features = ["derive"] }
 dirs = "6.0.0"
 thiserror = "2.0.12"
 toml_edit = "0.22.24"
+tracing = "0.1.41"
 
 [dev-dependencies]
 simple_test_case = "1.2.0"
