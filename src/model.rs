@@ -177,6 +177,21 @@ impl Cluster {
 
         Ok(())
     }
+
+    fn expand_dir_aliases(&mut self) -> Result<()> {
+        self.root.dir_alias =
+            DirAlias::new(shellexpand::full(&self.root.dir_alias.to_string())?.into_owned());
+
+        for node in self.nodes.values_mut() {
+            if let DeploymentKind::BareAlias(dir_alias) = &node.deployment {
+                node.deployment = DeploymentKind::BareAlias(DirAlias::new(
+                    shellexpand::full(&dir_alias.to_string())?.into_owned(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl std::fmt::Display for Cluster {
@@ -201,12 +216,13 @@ impl std::str::FromStr for Cluster {
             HashMap::new()
         };
 
-        let cluster = Self {
+        let mut cluster = Self {
             root,
             nodes,
             document,
         };
         cluster.acyclic_check()?;
+        cluster.expand_dir_aliases()?;
 
         Ok(cluster)
     }
@@ -675,6 +691,61 @@ mod tests {
             Ok(_) => assert!(config.parse::<Cluster>().is_ok()),
             Err(_) => assert!(config.parse::<Cluster>().is_err()),
         }
+    }
+
+    #[sealed_test(env = [("CUSTOM_VAR", "/some/path")])]
+    fn smoke_cluster_from_str_expand_dir_aliases() -> Result<()> {
+        let config = r#"
+            dir_alias = "$CUSTOM_VAR/ocd"
+
+            [nodes.vim]
+            deployment = { kind = "bare_alias", dir_alias = "$CUSTOM_VAR/vimrc" }
+
+            [nodes.bash]
+            deployment = { kind = "bare_alias", dir_alias = "$CUSTOM_VAR/bash" }
+
+            [nodes.fish]
+            deployment = { kind = "bare_alias", dir_alias = "$CUSTOM_VAR/fish" }
+        "#;
+        let cluster: Cluster = config.parse()?;
+        let expect = RootEntry {
+            dir_alias: DirAlias::new("/some/path/ocd"),
+            ..Default::default()
+        };
+        pretty_assertions::assert_eq!(cluster.root, expect);
+
+        let mut expect = vec![
+            (
+                "vim".to_string(),
+                NodeEntry {
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path/vimrc")),
+                    ..Default::default()
+                },
+            ),
+            (
+                "bash".to_string(),
+                NodeEntry {
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path/bash")),
+                    ..Default::default()
+                },
+            ),
+            (
+                "fish".to_string(),
+                NodeEntry {
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path/fish")),
+                    ..Default::default()
+                },
+            ),
+        ];
+        let mut result = cluster
+            .nodes
+            .into_iter()
+            .collect::<Vec<(String, NodeEntry)>>();
+        result.sort_by(|(a, _), (b, _)| a.cmp(b));
+        expect.sort_by(|(a, _), (b, _)| a.cmp(b));
+        pretty_assertions::assert_eq!(result, expect);
+
+        Ok(())
     }
 
     #[test_case(

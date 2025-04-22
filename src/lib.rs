@@ -64,6 +64,9 @@ pub enum Error {
 
     #[error("Could not find {name:?} in cluster definition")]
     EntryNotFound { name: String },
+
+    #[error(transparent)]
+    Shellexpand(#[from] shellexpand::LookupError<std::env::VarError>),
 }
 
 impl From<Error> for i32 {
@@ -75,6 +78,7 @@ impl From<Error> for i32 {
             Error::CircularDependencies { .. } => exitcode::CONFIG,
             Error::EntryNotTable { .. } => exitcode::CONFIG,
             Error::EntryNotFound { .. } => exitcode::CONFIG,
+            Error::Shellexpand(..) => exitcode::IOERR,
         }
     }
 }
