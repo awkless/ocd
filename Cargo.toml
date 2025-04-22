@@ -39,6 +39,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["fmt", "env-filter"] }
 
 [dev-dependencies]
-simple_test_case = "1.2.0"
+indoc = "2.0.6"
 pretty_assertions = "1.4.1"
 sealed_test = "1.1.0"
+simple_test_case = "1.2.0"
