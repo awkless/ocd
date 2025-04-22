@@ -36,3 +36,4 @@ toml_edit = "0.22.24"
 [dev-dependencies]
 simple_test_case = "1.2.0"
 pretty_assertions = "1.4.1"
+sealed_test = "1.1.0"
