@@ -56,6 +56,9 @@ pub enum Error {
     #[error(transparent)]
     Toml(#[from] toml_edit::TomlError),
 
+    #[error("Dependency {name:?} not found in cluster definition")]
+    DependencyNotFound { name: String },
+
     #[error("Cluster contains cycle(s): {cycle:?}")]
     CircularDependencies { cycle: Vec<String> },
 
@@ -75,6 +78,7 @@ impl From<Error> for i32 {
             Error::NoWayHome => exitcode::IOERR,
             Error::NoWayConfig => exitcode::IOERR,
             Error::Toml(..) => exitcode::CONFIG,
+            Error::DependencyNotFound { .. } => exitcode::CONFIG,
             Error::CircularDependencies { .. } => exitcode::CONFIG,
             Error::EntryNotTable { .. } => exitcode::CONFIG,
             Error::EntryNotFound { .. } => exitcode::CONFIG,

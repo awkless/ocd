@@ -121,6 +121,21 @@ impl Cluster {
         }
     }
 
+    fn dependency_existence_check(&self) -> Result<()> {
+        let mut results = Vec::new();
+        for node in self.nodes.values() {
+            for dependency in node.dependencies.iter().flatten() {
+                if !self.nodes.contains_key(dependency) {
+                    results.push(Err(Error::DependencyNotFound { name: dependency.clone() }));
+                } else {
+                    results.push(Ok(()));
+                }
+            }
+        }
+
+        results.into_iter().collect::<_>()
+    }
+
     #[instrument(skip(self))]
     fn acyclic_check(&self) -> Result<()> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
@@ -221,6 +236,7 @@ impl std::str::FromStr for Cluster {
             nodes,
             document,
         };
+        cluster.dependency_existence_check()?;
         cluster.acyclic_check()?;
         cluster.expand_dir_aliases()?;
 
@@ -625,6 +641,53 @@ mod tests {
         pretty_assertions::assert_eq!(result, expect);
 
         Ok(())
+    }
+
+    #[test_case(
+        r#"
+            [nodes.foo]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["fail"]
+
+            [nodes.bar]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["snafu"]
+
+            [nodes.baz]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["blah"]
+        "#,
+        Err(anyhow::anyhow!("should fail"));
+        "undefined dependencies"
+    )]
+    #[test_case(
+        r#"
+            [nodes.foo]
+            deployment = "normal"
+            url = "https://some/url"
+
+            [nodes.bar]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["foo"]
+
+            [nodes.baz]
+            deployment = "normal"
+            url = "https://some/url"
+            dependencies = ["bar"]
+        "#,
+        Ok(());
+        "defined dependencies"
+    )]
+    #[test]
+    fn smoke_cluster_from_str_dependency_existence_check(config: &str, expect: Result<(), anyhow::Error>) {
+        match expect {
+            Ok(_) => config.parse::<Cluster>().is_ok(),
+            Err(_) => config.parse::<Cluster>().is_err(),
+        };
     }
 
     #[test_case(
