@@ -58,6 +58,9 @@ pub enum Error {
 
     #[error("Cluster contains cycle(s): {cycle:?}")]
     CircularDependencies { cycle: Vec<String> },
+
+    #[error("Expect {name:?} to be defined as a table")]
+    TomlNotTable { name: String },
 }
 
 impl From<Error> for i32 {
@@ -67,6 +70,7 @@ impl From<Error> for i32 {
             Error::NoWayConfig => exitcode::IOERR,
             Error::Toml(..) => exitcode::CONFIG,
             Error::CircularDependencies { .. } => exitcode::CONFIG,
+            Error::TomlNotTable { .. } => exitcode::CONFIG,
         }
     }
 }

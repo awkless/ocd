@@ -15,7 +15,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
 };
-use toml_edit::{DocumentMut, Item, Table};
+use toml_edit::{Array, DocumentMut, InlineTable, Item, Key, Table, Value};
 use tracing::{debug, instrument};
 
 /// Format preserving cluster definition parser.
@@ -46,13 +46,53 @@ impl Cluster {
         Cluster::default()
     }
 
+    /// Add node entry into cluster definition.
+    ///
+    /// Will replace existing node entry if given node entry was not new, returning the old entry
+    /// that was replaced. Will construct a new "nodes" table if it does not already exist.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::TomlNotTable`] if "nodes" was defined, but not as a table as expected.
+    ///
+    /// [`Error::TomlNotTable`]: crate::Error::TomlNotTable
+    pub fn add_node(
+        &mut self,
+        name: impl AsRef<str>,
+        node: NodeEntry,
+    ) -> Result<Option<NodeEntry>> {
+        let (key, item) = node.to_toml(name.as_ref());
+        let table = if let Some(item) = self.document.get_mut("nodes") {
+            item.as_table_mut().ok_or(Error::TomlNotTable {
+                name: "nodes".into(),
+            })?
+        } else {
+            // INVARIANT: Construct new "nodes" table to insert node entry into.
+            let mut new_table = Table::new();
+            new_table.set_implicit(true);
+            self.document.insert("nodes", Item::Table(new_table));
+            // Will not panic since we just inserted the "nodes" table beforehand.
+            self.document["nodes"].as_table_mut().unwrap()
+        };
+
+        // TODO: Transfer comments and whitespace of old entry to new entry that replaced it.
+        //   - Is this really worth doing?
+        table.insert_formatted(&key, item);
+
+        Ok(self.nodes.insert(name.as_ref().into(), node))
+    }
+
     /// Iterate through all dependencies of a target node entry.
     ///
     /// Provides full path through each dependency of target node inclusively.
     pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
         let mut stack = VecDeque::new();
         stack.push_front(node.into());
-        DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
+        DependencyIter {
+            graph: &self.nodes,
+            visited: HashSet::new(),
+            stack,
+        }
     }
 
     #[instrument(skip(self))]
@@ -110,6 +150,12 @@ impl Cluster {
         debug!("Topological sort of cluster nodes: {visited:?}");
 
         Ok(())
+    }
+}
+
+impl std::fmt::Display for Cluster {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.document)
     }
 }
 
@@ -244,8 +290,49 @@ pub struct NodeEntry {
 }
 
 impl NodeEntry {
+    /// Construct new empty node entry.
     pub fn new() -> Self {
         NodeEntry::default()
+    }
+
+    pub fn to_toml(&self, name: impl AsRef<str>) -> (Key, Item) {
+        let mut node = Table::new();
+
+        match &self.deployment {
+            DeploymentKind::Normal => {
+                node.insert("deployment", Item::Value(Value::from("normal")));
+            }
+            DeploymentKind::BareAlias(alias) => {
+                if alias.is_home_dir() {
+                    node.insert("deployment", Item::Value(Value::from("bare_alias")));
+                } else {
+                    let mut inline = InlineTable::new();
+                    inline.insert("kind", Value::from("bare_alias"));
+                    inline.insert("dir_alias", Value::from(alias.to_string()));
+                    node.insert("deployment", Item::Value(Value::from(inline)));
+                }
+            }
+        }
+
+        node.insert("url", Item::Value(Value::from(&self.url)));
+
+        if let Some(excluded) = &self.excluded {
+            node.insert(
+                "excluded",
+                Item::Value(Value::Array(Array::from_iter(excluded))),
+            );
+        }
+
+        if let Some(dependencies) = &self.dependencies {
+            node.insert(
+                "dependencies",
+                Item::Value(Value::Array(Array::from_iter(dependencies))),
+            );
+        }
+
+        let key = Key::new(name.as_ref());
+        let value = Item::Table(node);
+        (key, value)
     }
 }
 
@@ -339,12 +426,33 @@ impl DirAlias {
     pub(crate) fn new(path: impl Into<PathBuf>) -> Self {
         Self(path.into())
     }
+
+    /// Determine if directory alias if pointing to home directory path.
+    pub(crate) fn is_home_dir(&self) -> bool {
+        let home = match home_dir() {
+            Ok(path) => path,
+            Err(_) => return false,
+        };
+
+        if self.0 == home {
+            return true;
+        }
+
+        false
+    }
+}
+
+impl std::fmt::Display for DirAlias {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.to_string_lossy().into_owned())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use indoc::indoc;
     use sealed_test::prelude::*;
     use simple_test_case::test_case;
 
@@ -544,6 +652,158 @@ mod tests {
     }
 
     #[test_case(
+        indoc! {r#"
+            # This comment should remain!
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+        "#},
+        "st",
+        NodeEntry {
+            url: "https://some/url".into(),
+            ..Default::default()
+        },
+        indoc! {r#"
+            # This comment should remain!
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+
+            [nodes.st]
+            deployment = "normal"
+            url = "https://some/url"
+        "#},
+        Ok(None);
+        "normal entry"
+    )]
+    #[test_case(
+        indoc! {r#"
+            # This comment should remain!
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+        "#},
+        "vim",
+        NodeEntry {
+            deployment: DeploymentKind::BareAlias(DirAlias::new("/home/user")),
+            url: "https://some/url".into(),
+            ..Default::default()
+        },
+        indoc! {r#"
+            # This comment should remain!
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+
+            [nodes.vim]
+            deployment = "bare_alias"
+            url = "https://some/url"
+        "#},
+        Ok(None);
+        "bare alias home dir"
+    )]
+    #[test_case(
+        indoc! {r#"
+            # This comment should remain!
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+        "#},
+        "vim",
+        NodeEntry {
+            deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path")),
+            url: "https://some/url".into(),
+            ..Default::default()
+        },
+        indoc! {r#"
+            # This comment should remain!
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+
+            [nodes.vim]
+            deployment = { kind = "bare_alias", dir_alias = "/some/path" }
+            url = "https://some/url"
+        "#},
+        Ok(None);
+        "bare alias custom dir"
+    )]
+    #[test_case(
+        indoc! {r#"
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+        "#},
+        "dwm",
+        NodeEntry {
+            deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path")),
+            url: "https://some/url".into(),
+            ..Default::default()
+        },
+        indoc! {r#"
+            [nodes.dwm]
+            deployment = { kind = "bare_alias", dir_alias = "/some/path" }
+            url = "https://some/url"
+        "#},
+        Ok(
+            Some(
+                NodeEntry {
+                    url: "https://some/url".into(),
+                    ..Default::default()
+                },
+            )
+        );
+        "replace existing node"
+    )]
+    #[test_case(
+        indoc! {r#"
+            # This comment should remain!
+        "#},
+        "dwm",
+        NodeEntry {
+            deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path")),
+            url: "https://some/url".into(),
+            ..Default::default()
+        },
+        indoc! {r#"
+            [nodes.dwm]
+            deployment = { kind = "bare_alias", dir_alias = "/some/path" }
+            url = "https://some/url"
+            # This comment should remain!
+        "#},
+        Ok(None);
+        "create new nodes table"
+    )]
+    #[test_case(
+        r#"nodes = "should fail""#,
+        "should fail",
+        NodeEntry::default(),
+        "should fail",
+        Err(anyhow::anyhow!("should fail"));
+        "not table"
+    )]
+    #[sealed_test(env = [("HOME", "/home/user")])]
+    fn smoke_cluster_add_node(
+        config: &str,
+        key: &str,
+        item: NodeEntry,
+        str_expect: &str,
+        ret_expect: Result<Option<NodeEntry>, anyhow::Error>,
+    ) -> Result<()> {
+        let mut cluster: Cluster = config.parse()?;
+        match ret_expect {
+            Ok(expect) => {
+                let result = cluster.add_node(key, item)?;
+                pretty_assertions::assert_eq!(result, expect);
+                pretty_assertions::assert_eq!(cluster.to_string(), str_expect);
+            }
+            Err(_) => assert!(cluster.add_node(key, item).is_err()),
+        }
+
+        Ok(())
+    }
+
+    #[test_case(
         r#"
             [nodes.sh]
             deployment = "normal"
@@ -613,7 +873,10 @@ mod tests {
         "no path"
     )]
     #[test]
-    fn smoke_cluster_dependency_iter(config: &str, mut expect: Vec<(&str, NodeEntry)>) -> Result<()> {
+    fn smoke_cluster_dependency_iter(
+        config: &str,
+        mut expect: Vec<(&str, NodeEntry)>,
+    ) -> Result<()> {
         let cluster: Cluster = config.parse()?;
         let mut result: Vec<(&str, NodeEntry)> = cluster
             .dependency_iter("bash")
