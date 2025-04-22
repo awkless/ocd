@@ -11,6 +11,9 @@ version = 2
 multiple-versions = "deny"
 wildcards = "deny"
 skip = [
+  { name = "regex-automata", version = "0.1.10" },
+  { name = "regex-syntax", version = "0.6.29" },
+  { name = "windows-sys", version = "0.52.0" },
 ]
 
 [sources]
