@@ -126,7 +126,9 @@ impl Cluster {
         for node in self.nodes.values() {
             for dependency in node.dependencies.iter().flatten() {
                 if !self.nodes.contains_key(dependency) {
-                    results.push(Err(Error::DependencyNotFound { name: dependency.clone() }));
+                    results.push(Err(Error::DependencyNotFound {
+                        name: dependency.clone(),
+                    }));
                 } else {
                     results.push(Ok(()));
                 }
@@ -683,7 +685,10 @@ mod tests {
         "defined dependencies"
     )]
     #[test]
-    fn smoke_cluster_from_str_dependency_existence_check(config: &str, expect: Result<(), anyhow::Error>) {
+    fn smoke_cluster_from_str_dependency_existence_check(
+        config: &str,
+        expect: Result<(), anyhow::Error>,
+    ) {
         match expect {
             Ok(_) => config.parse::<Cluster>().is_ok(),
             Err(_) => config.parse::<Cluster>().is_err(),
