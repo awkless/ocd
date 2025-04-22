@@ -55,5 +55,23 @@ pub enum Error {
     Toml(#[from] toml_edit::TomlError),
 }
 
+impl From<Error> for i32 {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::NoWayHome => exitcode::IOERR,
+            Error::NoWayConfig => exitcode::IOERR,
+            Error::Toml(_) => exitcode::CONFIG,
+        }
+    }
+}
+
 /// Wrapper to make it easy to specify [`Result`] using [`Error`].
 pub(crate) type Result<T, E = Error> = std::result::Result<T, E>;
+
+/// Obtain exit status from [`anyhow::Error`].
+pub fn exit_status_from_error(error: anyhow::Error) -> i32 {
+    match error.downcast::<Error>() {
+        Ok(error) => error.into(),
+        Err(_) => exitcode::SOFTWARE,
+    }
+}
