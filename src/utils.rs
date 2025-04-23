@@ -60,6 +60,34 @@ pub fn syscall_non_interactive(
     Ok(message)
 }
 
+/// Call external shell program interactively.
+///
+/// Will inherit stdout and stderr from user's current working environment. Any output will be
+/// issued to user interactively for their session.
+///
+/// Given that stdout and stderr are inherited, there is no need to collect output, because the
+/// user will have already seen it. Thus, caller should use this method to allow user to interact
+/// with a given shell program, and return control back the OCD program when finished.
+///
+/// # Errors
+///
+/// - Will fail if external shell program cannot be found.
+/// - Will fail if given arguments for external shell program are invalid.
+pub fn syscall_interactive(
+    cmd: impl AsRef<OsStr>,
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+) -> Result<()> {
+    let status = Command::new(cmd.as_ref()).args(args).spawn()?.wait()?;
+
+    if !status.success() {
+        return Err(Error::SyscallInteractive {
+            program: cmd.as_ref().to_string_lossy().into_owned(),
+        });
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
