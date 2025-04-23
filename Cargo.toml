@@ -33,6 +33,7 @@ auth-git2 = "0.5.7"
 clap = { version = "4.5.37", features = ["derive"] }
 dirs = "6.0.0"
 exitcode = "1.1.2"
+futures = "0.3.31"
 git2 = "0.20.1"
 indicatif = "0.17.11"
 shellexpand = "3.1.1"
