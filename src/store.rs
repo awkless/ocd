@@ -31,7 +31,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tracing::{info, instrument, warn};
+use tracing::{info, instrument, warn, debug};
 
 /// Manage root repository in repository store.
 pub struct Root(Git);
@@ -153,7 +153,7 @@ impl MultiNodeClone {
 
         // TODO: Report all failures instead of the first occurance of a failure.
         let results = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
-        let _ = results.into_iter().flatten().collect::<Result<Vec<_>>>()?;
+        let _ = results.into_iter().flatten().collect::<Result<Vec<_>, _>>()?;
 
         Ok(())
     }
@@ -335,11 +335,13 @@ impl Git {
     ///
     /// - Will fail if Git binary cannot be found.
     /// - Will fail if provided arguments are invalid.
+    #[instrument(skip(self, args))]
     pub fn gitcall_non_interactive(
         &self,
         args: impl IntoIterator<Item = impl Into<OsString>>,
     ) -> Result<String> {
         let args = self.expand_bin_args(args);
+        debug!("Run non interactive git with {args:?}");
         syscall_non_interactive("git", args)
     }
 
@@ -362,8 +364,9 @@ impl Git {
         &self,
         args: impl IntoIterator<Item = impl Into<OsString>>,
     ) -> Result<()> {
-        info!("interactive call to git for {:?}", self.path);
+        info!("Interactive call to git for {:?}", self.name);
         let args = self.expand_bin_args(args);
+        debug!("Run interactive git with {args:?}");
         syscall_interactive("git", args)
     }
 
