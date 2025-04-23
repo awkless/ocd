@@ -43,8 +43,8 @@
 
 pub(crate) mod model;
 pub(crate) mod path;
+pub(crate) mod store;
 pub(crate) mod utils;
-pub(crate) mod vcs;
 
 /// All possible error variants that OCD can encounter during runtime.
 #[derive(Debug, thiserror::Error)]

@@ -1,0 +1,673 @@
+// SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+// SPDX-License-Identifier: MIT
+
+//! Repository store management.
+//!
+//! This module provides utilities to manipulate and manage OCD's repository store. Similar to the
+//! cluster definition, the repository store houses a root repository with a set of node
+//! repositories that are all initially defined through the cluster definition housed in the root
+//! repository. The repository store always reflects the changes made to the cluster definition
+//! such that a top-down heirarchy is followed, with the cluster definition at the top and
+//! repository store at the bottom.
+
+use crate::{
+    model::{Cluster, DeploymentKind, DirAlias},
+    path::data_dir,
+    utils::{glob_match, syscall_interactive, syscall_non_interactive},
+    Error, Result,
+};
+
+use auth_git2::{GitAuthenticator, Prompter};
+use git2::{build::RepoBuilder, Config, FetchOptions, RemoteCallbacks, Repository};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use inquire::{Password, Text};
+use std::{
+    ffi::OsString,
+    fmt::Write as FmtWrite,
+    fs::File,
+    io::Write as IoWrite,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
+use tracing::{info, instrument, warn};
+
+/// Manage root repository in repository store.
+pub struct Root(Git);
+
+impl Root {
+    /// Construct new root repository by cloning it.
+    ///
+    /// Will show progress of the clone through fancy progress bar, and will automatically deploy
+    /// the root repository to target directory alias used in cluster definition.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for any failure internal repository failure.
+    /// - Return [`Error::Git2FileNotFound`] if cluster definition does not exist in root.
+    /// - Return [`Error::SyscallInteractive`] for deployment failure.
+    /// - Return [`Error::Io`] for failed writes to sparse checkout file.
+    pub fn new_clone(url: impl AsRef<str>) -> Result<Self> {
+        let bar = ProgressBar::no_length();
+        let repo = Git::builder(data_dir()?.join("root"))
+            .url(url.as_ref())
+            .kind(DeploymentKind::BareAlias(DirAlias::default()))
+            .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
+                bar.clone(),
+            )))
+            .clone(&bar)?;
+
+        let cluster: Cluster = repo.extract_file_data("cluster.toml")?.parse()?;
+        let mut root = Self(repo);
+        root.0
+            .set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias));
+        root.0.set_excluded(cluster.root.excluded.iter().flatten());
+        root.0.deploy(DeployAction::Deploy)?;
+
+        Ok(root)
+    }
+}
+
+/// Git repository manager.
+///
+/// Wraps a Git repository to provide important functionality regarding the management, deployment,
+/// and processing of repository data throughout the codebase.
+pub(crate) struct Git {
+    name: String,
+    path: PathBuf,
+    kind: DeploymentKind,
+    url: String,
+    excluded: SparseCheckout,
+    authenticator: GitAuthenticator,
+    repository: Repository,
+}
+
+impl Git {
+    pub(crate) fn builder(path: impl Into<PathBuf>) -> GitBuilder {
+        GitBuilder::new(path.into())
+    }
+
+    /// Set kind of repository for deployment.
+    pub(crate) fn set_kind(&mut self, kind: DeploymentKind) {
+        self.kind = kind;
+    }
+
+    /// Set files to exclude based on a set of sparsity rules.
+    pub(crate) fn set_excluded(&mut self, rules: impl IntoIterator<Item = impl Into<String>>) {
+        self.excluded.add_exclusions(rules);
+    }
+
+    /// Name of managed repository.
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Determine if repository is bare.
+    pub(crate) fn is_bare(&self) -> bool {
+        self.kind.is_bare() && self.repository.is_bare()
+    }
+
+    /// Determine if repository is currently deployed.
+    pub(crate) fn is_deployed(&self, state: DeployState) -> bool {
+        if !self.repository.path().exists() {
+            return false;
+        }
+
+        let worktree = match &self.kind {
+            DeploymentKind::Normal => return false,
+            DeploymentKind::BareAlias(worktree) => worktree,
+        };
+
+        let index = match self.repository.index() {
+            Ok(index) => index,
+            Err(_) => return false,
+        };
+
+        if index.is_empty() {
+            return false;
+        }
+
+        let mut entries: Vec<String> = index
+            .iter()
+            .map(|b| String::from_utf8_lossy(b.path.as_ref()).into_owned())
+            .collect();
+
+        if state == DeployState::WithoutExcluded {
+            let excludes = glob_match(self.excluded.iter(), entries.iter());
+            entries.retain(|x| !excludes.contains(x));
+        }
+
+        for entry in entries {
+            let path = worktree.0.join(entry);
+            if !path.exists() {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Extract string data from target file in index.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2FileNotFound`] if file does not exist in index.
+    /// - Return [`Error::Git2`] for any other failure with repository.
+    ///
+    /// [`Error::Git2FileNotFound`]: crate::Error::Git2FileNotFound
+    /// [`Error::Git2`]: crate::Error::Git2
+    pub(crate) fn extract_file_data(&self, name: impl AsRef<str>) -> Result<String> {
+        let commit = self.repository.head()?.peel_to_commit()?;
+        let tree = commit.tree()?;
+        let entry = tree
+            .get_name(name.as_ref())
+            .ok_or(Error::Git2FileNotFound {
+                repo: self.name.clone(),
+                file: name.as_ref().into(),
+            })?;
+        let blob = entry.to_object(&self.repository)?.peel_to_blob()?;
+
+        Ok(String::from_utf8_lossy(blob.content()).into_owned())
+    }
+
+    /// Deploy repository index to target worktree alias based on selected deployment action.
+    ///
+    /// Will not deploy a repository that is normal. Will also not perform target deployment action
+    /// if that action was already performed on the repository's index beforehand.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if required sparsity rules cannot be written to sparse checkout file.
+    /// - Will fail if repository index cannot be deployed for whatever reason.
+    #[instrument(skip(self, action))]
+    pub(crate) fn deploy(&self, action: DeployAction) -> Result<()> {
+        if !self.is_bare() {
+            warn!("Repository {:?} is normal, deployment unnecessary", self.path);
+            return Ok(());
+        }
+
+        let msg = match action {
+            DeployAction::Deploy => {
+                if self.is_deployed(DeployState::WithoutExcluded) {
+                    warn!("Repository {:?} is already deployed", self.path);
+                    return Ok(());
+                }
+
+                self.excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
+                format!("deploy {:?}", self.path)
+            }
+            DeployAction::DeployAll => {
+                if self.is_deployed(DeployState::WithExcluded) {
+                    warn!("Repository {:?} is already deployed fully", self.path);
+                    return Ok(());
+                }
+
+                self.excluded.write_rules(ExcludeAction::IncludeAll)?;
+                format!("deploy all of {:?}", self.path)
+            }
+            DeployAction::Undeploy => {
+                if !self.is_deployed(DeployState::WithoutExcluded) {
+                    warn!("Repository {:?} is already undeployed fully", self.path);
+                    return Ok(());
+                }
+
+                self.excluded.write_rules(ExcludeAction::ExcludeAll)?;
+                format!("undeploy {:?}", self.path)
+            }
+            DeployAction::UndeployExcludes => {
+                if !self.is_deployed(DeployState::WithExcluded) {
+                    warn!("Repository {:?} excluded files are undeployed", self.path);
+                    return Ok(());
+                }
+
+                self.excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
+                format!("undeploy excluded files of {:?}", self.path)
+            }
+        };
+
+        let output = self.gitcall_non_interactive(["checkout"])?;
+        info!("{msg}\n{output}");
+
+        Ok(())
+    }
+
+    /// Call Git binary non-interactively.
+    ///
+    /// Will pipe stdout and stderr into a string that is returned to call for further evaluation.
+    /// Caller cannot interact with Git binary at all. Mainly meant to feed Git binary one-liners
+    /// whose output will be parsed and processed for further actions in codebase.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if Git binary cannot be found.
+    /// - Will fail if provided arguments are invalid.
+    pub fn gitcall_non_interactive(
+        &self,
+        args: impl IntoIterator<Item = impl Into<OsString>>,
+    ) -> Result<String> {
+        let args = self.expand_bin_args(args);
+        syscall_non_interactive("git", args)
+    }
+
+    /// Call git binary interactively.
+    ///
+    /// Allows caller to give control of current session to Git binary so user can properly
+    /// interact with Git itself. Control is then given back to the OCD program once the user
+    /// finishes interacting with Git.
+    ///
+    /// Once called, Git binary will inherit stdout and stderr from user's current environment. Any
+    /// output that Git provides is produced interactively. Thus, there is no need to collect
+    /// output, because user will have already seen it.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if Git binary cannot be found.
+    /// - Will fail if provided arguments are invalid.
+    #[instrument(skip(self, args))]
+    pub fn gitcall_interactive(
+        &self,
+        args: impl IntoIterator<Item = impl Into<OsString>>,
+    ) -> Result<()> {
+        info!("interactive call to git for {:?}", self.path);
+        let args = self.expand_bin_args(args);
+        syscall_interactive("git", args)
+    }
+
+    fn expand_bin_args(
+        &self,
+        args: impl IntoIterator<Item = impl Into<OsString>>,
+    ) -> Vec<OsString> {
+        let gitdir = self.repository.path().to_string_lossy().into_owned().into();
+        let path_args: Vec<OsString> = match &self.kind {
+            DeploymentKind::Normal => vec!["--git-dir".into(), gitdir],
+            DeploymentKind::BareAlias(dir_alias) => {
+                vec![
+                    "--git-dir".into(),
+                    gitdir,
+                    "--work-tree".into(),
+                    dir_alias.to_os_string(),
+                ]
+            }
+        };
+
+        let mut bin_args: Vec<OsString> = Vec::new();
+        bin_args.extend(path_args);
+        bin_args.extend(args.into_iter().map(Into::into));
+
+        bin_args
+    }
+}
+
+/// Builder for [`Git`] type.
+#[derive(Default, Debug)]
+pub(crate) struct GitBuilder {
+    name: String,
+    path: PathBuf,
+    kind: DeploymentKind,
+    url: String,
+    excluded: SparseCheckout,
+    authenticator: GitAuthenticator,
+}
+
+impl GitBuilder {
+    /// Construct new empty [`Git`] builder.
+    pub(crate) fn new(path: impl Into<PathBuf>) -> Self {
+        let path = path.into();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+
+        Self {
+            path,
+            name,
+            ..Default::default()
+        }
+    }
+
+    /// Set kind of repository for deployment.
+    pub(crate) fn kind(mut self, kind: DeploymentKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
+    /// Set URL to clone from.
+    pub(crate) fn url(mut self, url: impl Into<String>) -> Self {
+        self.url = url.into();
+        self
+    }
+
+    /// Set files to exclude based on a set of sparsity rules.
+    pub(crate) fn excluded(mut self, rules: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.excluded.add_exclusions(rules);
+        self
+    }
+
+    /// Set authentication prompter.
+    pub(crate) fn authenticator(mut self, prompter: impl Prompter + Clone + 'static) -> Self {
+        self.authenticator = self.authenticator.set_prompter(prompter);
+        self
+    }
+
+    /// Build [`Git`] by cloning it.
+    ///
+    /// Will track progress of clone through a progress bar.
+    ///
+    /// # Errors
+    ///
+    /// - Return `Error::Git2` if repository could not be cloned.
+    pub(crate) fn clone(mut self, bar: &ProgressBar) -> Result<Git> {
+        let style = ProgressStyle::with_template(
+            "{elapsed_precise:.green}  {msg:<50}  [{wide_bar:.yellow/blue}]",
+        )?
+        .progress_chars("-Cco.");
+        bar.set_style(style);
+        bar.set_message(self.url.clone());
+        bar.enable_steady_tick(std::time::Duration::from_millis(100));
+
+        let mut throttle = Instant::now();
+        let config = Config::open_default()?;
+        let mut rc = RemoteCallbacks::new();
+        rc.credentials(self.authenticator.credentials(&config));
+        rc.transfer_progress(|progress| {
+            let stats = progress.to_owned();
+            let bar_size = stats.total_objects() as u64;
+            let bar_pos = stats.received_objects() as u64;
+            if throttle.elapsed() > Duration::from_millis(50) {
+                throttle = Instant::now();
+                bar.set_length(bar_size);
+                bar.set_position(bar_pos);
+            }
+            true
+        });
+
+        let mut fo = FetchOptions::new();
+        fo.remote_callbacks(rc);
+
+        let repository = RepoBuilder::new()
+            .bare(self.kind.is_bare())
+            .fetch_options(fo)
+            .clone(&self.url, &self.path)?;
+
+        if self.kind.is_bare() {
+            let mut config = repository.config()?;
+            config.set_str("status.showUntrackedFiles", "no")?;
+            config.set_str("core.sparseCheckout", "true")?;
+        }
+
+        self.excluded.set_sparse_path(repository.path());
+
+        Ok(Git {
+            name: self.name,
+            path: self.path,
+            kind: self.kind,
+            url: self.url,
+            excluded: self.excluded,
+            authenticator: self.authenticator,
+            repository,
+        })
+    }
+}
+
+/// Variants of repository index deployment state.
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum DeployState {
+    /// Repository index is deployed without excluded files
+    #[default]
+    WithoutExcluded,
+
+    /// Repository index is fully deployed with excluded files.
+    WithExcluded,
+}
+
+/// Variants of repository index deployment.
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum DeployAction {
+    /// Deploy to target worktree excluding unwanted files.
+    #[default]
+    Deploy,
+
+    /// Deploy entire index to target worktree.
+    DeployAll,
+
+    /// Undeploy entire index from target worktree.
+    Undeploy,
+
+    /// Only undeploy excluded files from target worktree.
+    UndeployExcludes,
+}
+
+/// Manage authentication with progress bars.
+///
+/// Can handle single and multi progress bars based on [`ProgressBarKind`]. For any prompt to the
+/// terminal, all progress bars will be blocked to prevent the creation of zombie lines.
+#[derive(Clone)]
+pub(crate) struct ProgressBarAuthenticator {
+    bar_kind: ProgressBarKind,
+}
+
+impl ProgressBarAuthenticator {
+    /// Construct new authentication prompt progress bar handler.
+    pub(crate) fn new(bar_kind: ProgressBarKind) -> Self {
+        Self { bar_kind }
+    }
+}
+
+impl Prompter for ProgressBarAuthenticator {
+    #[instrument(skip(self, url, _git_config))]
+    fn prompt_username_password(
+        &mut self,
+        url: &str,
+        _git_config: &git2::Config,
+    ) -> Option<(String, String)> {
+        let prompt = || -> Option<(String, String)> {
+            info!("Authentication required for {url}");
+            let username = Text::new("username").prompt().unwrap();
+            let password = Password::new("password")
+                .without_confirmation()
+                .prompt()
+                .unwrap();
+            Some((username, password))
+        };
+
+        match &self.bar_kind {
+            ProgressBarKind::MultiBar(bar) => bar.suspend(prompt),
+            ProgressBarKind::SingleBar(bar) => bar.suspend(prompt),
+        }
+    }
+
+    #[instrument(skip(self, username, url, _git_config))]
+    fn prompt_password(
+        &mut self,
+        username: &str,
+        url: &str,
+        _git_config: &git2::Config,
+    ) -> Option<String> {
+        let prompt = || -> Option<String> {
+            info!("Authentication required for {url} for user {username}");
+            let password = Password::new("password")
+                .without_confirmation()
+                .prompt()
+                .unwrap();
+            Some(password)
+        };
+
+        match &self.bar_kind {
+            ProgressBarKind::MultiBar(bar) => bar.suspend(prompt),
+            ProgressBarKind::SingleBar(bar) => bar.suspend(prompt),
+        }
+    }
+
+    #[instrument(skip(self, private_key_path, _git_config))]
+    fn prompt_ssh_key_passphrase(
+        &mut self,
+        private_key_path: &Path,
+        _git_config: &git2::Config,
+    ) -> Option<String> {
+        let prompt = || -> Option<String> {
+            info!("Authentication required for {}", private_key_path.display());
+            let password = Password::new("password")
+                .without_confirmation()
+                .prompt()
+                .unwrap();
+            Some(password)
+        };
+
+        match &self.bar_kind {
+            ProgressBarKind::MultiBar(bar) => bar.suspend(prompt),
+            ProgressBarKind::SingleBar(bar) => bar.suspend(prompt),
+        }
+    }
+}
+
+/// Progress bar handler variants.
+#[derive(Clone)]
+pub(crate) enum ProgressBarKind {
+    /// Need to handle only one progress bar.
+    SingleBar(ProgressBar),
+
+    /// Need to handle more than one progress bar.
+    MultiBar(MultiProgress),
+}
+
+/// Sparse checkout handling.
+///
+/// Provide a simple way to manipulate the contents of Git's sparse checkout file. Internally, we
+/// use sparse checkout to implement the file exclusion functionality when the user deploys a
+/// repository to a target directory as a worktree alias.
+///
+/// Sparse checkout uses the gitignore syntax to define a set of _sparsity rules_. These sparsity
+/// rules do not determine what gets excluded, but what gets included. A basic inverse of what the
+/// gitignore rule patterns are supposed to do. However, to keep things consistent in the codebase,
+/// we treat these sparsity rules as patterns of what to exclude from the index upon deployment.
+///
+/// Git does not provide a reliable way to remove sparsity rule entries from the sparse checkout
+/// file of a repository. Thus, the file is directly manipulated such that the caller is expected
+/// to call Git afterwards for the changes to take effect. Plus, we avoid having to make system
+/// calls to Git to improve performance.
+///
+/// ## Drawbacks
+///
+/// In order to allow the user to exclude any file from any part of their index for a given
+/// repository, OCD uses non-cone mode of Git's sparse checkout to achive this. The issue is that
+/// non-cone mode is a deprecated feature whose performance serverly worsens the more refs it needs
+/// to analyze for each sparsity rule (O(N * M) pattern matches). The maintainers of sparse
+/// checkout will not be removing non-cone mode, but non-cone mode will not be receiving the same
+/// updates and features as cone mode for future release of Git.
+///
+/// However, OCD makes the assumption that the user will utilize the cluster feature of the project
+/// as much as possible. What makes a user's dotfiles big is the fact that they stuff all their
+/// configurations in one monolithic repository, and deploy that huge repository where they need it
+/// in one shot. With OCD's cluster feature, each dotfile configuration is split up across multiple
+/// repositories. Thus, the performance penalty of non-cone mode is spread across multiple
+/// repositories that will hopefully reduce its impact.
+///
+/// ## See also
+///
+/// - [git-sparse-checkout](https://git-scm.com/docs/git-sparse-checkout)
+#[derive(Debug, Default, Clone)]
+pub(crate) struct SparseCheckout {
+    sparse_path: PathBuf,
+    exclusion_rules: Vec<String>,
+}
+
+impl SparseCheckout {
+    /// Construct new empty sparse checkout manipulator.
+    pub(crate) fn new() -> Self {
+        SparseCheckout::default()
+    }
+
+    /// Set expected path to sparse checkout file based on gitdir path.
+    pub(crate) fn set_sparse_path(&mut self, gitdir: &Path) {
+        self.sparse_path = gitdir.join("info/sparse-checkout");
+    }
+
+    /// Add list of sparsity rules to exclude files upon index checkout.
+    pub(crate) fn add_exclusions(&mut self, rules: impl IntoIterator<Item = impl Into<String>>) {
+        let mut vec = Vec::new();
+        vec.extend(rules.into_iter().map(Into::into));
+        self.exclusion_rules = vec;
+    }
+
+    /// Write sparsity rules based on exclusion action.
+    ///
+    /// Will create sparse checkout file at expected path if it does not exist.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if sparse checkout file cannot be created when needed.
+    /// - Will fail if sparsity rules cannot be written to sparse checkout file.
+    pub(crate) fn write_rules(&self, action: ExcludeAction) -> Result<()> {
+        let rules: String = match action {
+            ExcludeAction::ExcludeUnwanted => {
+                let mut excluded = self
+                    .exclusion_rules
+                    .iter()
+                    .fold(String::new(), |mut acc, u| {
+                        writeln!(&mut acc, "!{u}").unwrap();
+                        acc
+                    });
+                excluded.insert_str(0, "/*\n");
+                excluded
+            }
+            ExcludeAction::IncludeAll => "/*".into(),
+            ExcludeAction::ExcludeAll => "".into(),
+        };
+
+        let mut file = File::create(&self.sparse_path)?;
+        file.write_all(rules.as_bytes())?;
+
+        Ok(())
+    }
+
+    /// Iterate through sparsity rules.
+    ///
+    /// Each pattern can be feed into [`glob_match`] if need be.
+    ///
+    /// [`glob_match`]: crate::utils::glob_match
+    pub(crate) fn iter(&self) -> SparsityRuleIter<'_> {
+        SparsityRuleIter {
+            exclusion_rules: &self.exclusion_rules,
+            index: 0,
+        }
+    }
+}
+
+/// Variants of exclusion actions for sparse checkout.
+#[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum ExcludeAction {
+    /// Use given sparsity rules to exclude files that match.
+    #[default]
+    ExcludeUnwanted,
+
+    /// Do not use sparsity rules so full index is checked out.
+    IncludeAll,
+
+    /// Use catchall sparsity rule to exclude entire index from checkout.
+    ExcludeAll,
+}
+
+/// Iterator for sparsity rules.
+///
+/// Designed to make it easy to match glob data when walking through repository index.
+#[derive(Debug)]
+pub(crate) struct SparsityRuleIter<'rule> {
+    exclusion_rules: &'rule Vec<String>,
+    index: usize,
+}
+
+impl Iterator for SparsityRuleIter<'_> {
+    type Item = String;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.exclusion_rules.len() {
+            return None;
+        }
+
+        let mut rule = self.exclusion_rules[self.index].clone();
+        self.index += 1;
+
+        // INVARIANT: Directory patterns match entire contents of directory itself through wildcard.
+        if rule.ends_with('/') {
+            rule.push('*');
+        }
+
+        Some(rule)
+    }
+}

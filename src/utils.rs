@@ -27,7 +27,10 @@ pub fn glob_match(
     patterns: impl IntoIterator<Item = impl Into<String>> + std::fmt::Debug,
     entries: impl IntoIterator<Item = impl Into<String>> + std::fmt::Debug,
 ) -> Vec<String> {
-    let patterns = patterns.into_iter().map(Into::into).collect::<Vec<String>>();
+    let patterns = patterns
+        .into_iter()
+        .map(Into::into)
+        .collect::<Vec<String>>();
     let entries = entries.into_iter().map(Into::into).collect::<Vec<String>>();
 
     let mut matched = Vec::new();
@@ -158,11 +161,7 @@ mod tests {
         "invalid pattern"
     )]
     #[test]
-    fn smoke_glob_match(
-        patterns: Vec<String>,
-        entries: Vec<String>,
-        expect: Vec<String>,
-    ) {
+    fn smoke_glob_match(patterns: Vec<String>, entries: Vec<String>, expect: Vec<String>) {
         let mut expect = expect.into_iter().map(Into::into).collect::<Vec<String>>();
         let mut result = glob_match(patterns, entries);
         expect.sort();

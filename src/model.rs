@@ -13,6 +13,7 @@ use crate::{
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    ffi::OsString,
     path::PathBuf,
 };
 use toml_edit::{Array, DocumentMut, InlineTable, Item, Key, Table, Value};
@@ -477,6 +478,16 @@ pub enum DeploymentKind {
     BareAlias(DirAlias),
 }
 
+impl DeploymentKind {
+    /// Determine if deployment kind yields a bare repository.
+    pub(crate) fn is_bare(&self) -> bool {
+        match self {
+            DeploymentKind::Normal => false,
+            DeploymentKind::BareAlias(..) => true,
+        }
+    }
+}
+
 /// Directory path to use as an alias for a worktree.
 #[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct DirAlias(pub(crate) PathBuf);
@@ -499,6 +510,10 @@ impl DirAlias {
         }
 
         false
+    }
+
+    pub(crate) fn to_os_string(&self) -> OsString {
+        OsString::from(self.0.to_string_lossy().into_owned())
     }
 }
 
