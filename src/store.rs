@@ -18,6 +18,7 @@ use crate::{
 };
 
 use auth_git2::{GitAuthenticator, Prompter};
+use futures::{stream, StreamExt};
 use git2::{build::RepoBuilder, Config, FetchOptions, RemoteCallbacks, Repository};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use inquire::{Password, Text};
@@ -27,6 +28,7 @@ use std::{
     fs::File,
     io::Write as IoWrite,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tracing::{info, instrument, warn};
@@ -64,6 +66,96 @@ impl Root {
         root.0.deploy(DeployAction::Deploy)?;
 
         Ok(root)
+    }
+}
+
+/// Clone all nodes in cluster definition asynchronously.
+pub struct MultiNodeClone {
+    nodes: Vec<GitBuilder>,
+    multi_bar: MultiProgress,
+    jobs: Option<usize>,
+}
+
+impl MultiNodeClone {
+    /// Construct new multi-node clone type from cluster definition.
+    ///
+    /// Extracts all node entries from cluster definition. Will set the number of threads/jobs that
+    /// will be used during the cloning of all nodes, with [`None`] resulting the saturation of all
+    /// CPU cores as much as possible.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::NoWayData`] if data directory path cannot be determined.
+    pub fn new(cluster: &Cluster, jobs: Option<usize>) -> Result<Self> {
+        let multi_bar = MultiProgress::new();
+        let mut nodes: Vec<GitBuilder> = Vec::new();
+
+        for (name, node) in cluster.nodes.iter() {
+            let repo = GitBuilder::new(data_dir()?.join(name))
+                .url(&node.url)
+                .kind(node.deployment.clone())
+                .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::MultiBar(
+                    multi_bar.clone(),
+                )));
+
+            nodes.push(repo);
+        }
+
+        Ok(Self {
+            nodes,
+            multi_bar,
+            jobs,
+        })
+    }
+
+    /// Clone all node entries in cluster asynchronously.
+    ///
+    /// Shows clone progress for each clone tasks. Tasks may block if user needs to enter their
+    /// credentials.
+    ///
+    /// # Invariants
+    ///
+    /// - Progress bars are properly finished no matter what.
+    ///
+    /// # Panics
+    ///
+    /// - Will panic if mutex guard fails to lock.
+    /// - Will panic if mutex cannot be unwrapped to extract clone task result data.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for clone task failure.
+    ///     - Failed clone tasks will not cancel any active clone tasks that are not failing.
+    ///     - Results are only collected until _all_ clone tasks have finished.
+    pub async fn clone_all(self) -> Result<()> {
+        let mut bars = Vec::new();
+        let results = Arc::new(Mutex::new(Vec::new()));
+
+        stream::iter(self.nodes)
+            .for_each_concurrent(self.jobs, |node| {
+                let results = results.clone();
+                let bar = self.multi_bar.add(ProgressBar::no_length());
+                bars.push(bar.clone());
+
+                async move {
+                    let result = tokio::spawn(async move { node.clone(&bar) }).await;
+                    let mut guard = results.lock().unwrap();
+                    guard.push(result);
+                    drop(guard);
+                }
+            })
+            .await;
+
+        // INVARIANT: All progress bars should be finished properly.
+        for bar in bars {
+            bar.finish_and_clear();
+        }
+
+        // TODO: Report all failures instead of the first occurance of a failure.
+        let results = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
+        let _ = results.into_iter().flatten().collect::<Result<Vec<_>>>()?;
+
+        Ok(())
     }
 }
 
@@ -181,7 +273,10 @@ impl Git {
     #[instrument(skip(self, action))]
     pub(crate) fn deploy(&self, action: DeployAction) -> Result<()> {
         if !self.is_bare() {
-            warn!("Repository {:?} is normal, deployment unnecessary", self.path);
+            warn!(
+                "Repository {:?} is normal, deployment unnecessary",
+                self.path
+            );
             return Ok(());
         }
 
@@ -294,6 +389,18 @@ impl Git {
         bin_args.extend(args.into_iter().map(Into::into));
 
         bin_args
+    }
+}
+
+impl std::fmt::Debug for Git {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Repository {{ name: {:?}, ", self.name)?;
+        write!(f, "path: {:?}, ", self.path)?;
+        write!(f, "kind: {:?} ", self.kind)?;
+        write!(f, "url: {:?} ", self.url)?;
+        write!(f, "excludes: {:?} ", self.excluded)?;
+        write!(f, "authenticator: {:?} ", self.authenticator)?;
+        writeln!(f, "repository: git2 stuff :D }}")
     }
 }
 
