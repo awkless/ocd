@@ -67,6 +67,30 @@ impl Root {
 
         Ok(root)
     }
+
+    /// Construct new root by opening existing root repository.
+    ///
+    /// Will ensure that root is always deployed if it was somehow undeployed for whatever reason.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] if opening root repository failed.
+    /// - Return [`Error::Git2FileNotFound`] if root somehow does not contain a cluster definition.
+    #[instrument]
+    pub fn new_open() -> Result<Self> {
+        let repo = Git::builder(data_dir()?.join("root")).open()?;
+        let cluster: Cluster = repo.extract_file_data("cluster.toml")?.parse()?;
+        let mut root = Self(repo);
+        root.0.set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
+        root.0.set_excluded(cluster.root.excluded.iter().flatten());
+
+        if !root.0.is_deployed(DeployState::WithoutExcluded) {
+            warn!("Deploy root repository, because it was not already deployed");
+            root.0.deploy(DeployAction::Deploy)?;
+        }
+
+        Ok(root)
+    }
 }
 
 /// Clone all nodes in cluster definition asynchronously.
