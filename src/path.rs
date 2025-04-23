@@ -33,3 +33,16 @@ pub fn config_dir() -> Result<PathBuf> {
         .map(|path| path.join("ocd"))
         .ok_or(Error::NoWayConfig)
 }
+
+/// Get absolute path to OCD's data directory.
+///
+/// # Errors
+///
+/// - Return [`Error::NowWayData`] if path to configuration directory cannot be determined.
+///
+/// [`Error::NowWayData`]: crate::Error::NowWayData
+pub fn data_dir() -> Result<PathBuf> {
+    dirs::data_dir()
+        .map(|path| path.join("ocd"))
+        .ok_or(Error::NoWayData)
+}

@@ -44,6 +44,7 @@
 pub(crate) mod model;
 pub(crate) mod path;
 pub(crate) mod utils;
+pub(crate) mod vcs;
 
 /// All possible error variants that OCD can encounter during runtime.
 #[derive(Debug, thiserror::Error)]
@@ -53,6 +54,9 @@ pub enum Error {
 
     #[error("Cannot determine path to configuration directory")]
     NoWayConfig,
+
+    #[error("Cannot determine path to data directory")]
+    NoWayData,
 
     #[error(transparent)]
     Toml(#[from] toml_edit::TomlError),
@@ -80,6 +84,15 @@ pub enum Error {
 
     #[error("Program {program:?} called interactively, but failed to execute")]
     SyscallInteractive { program: String },
+
+    #[error(transparent)]
+    Git2(#[from] git2::Error),
+
+    #[error("Cannot find file {file:?} in index of {repo:?}")]
+    Git2FileNotFound { repo: String, file: String },
+
+    #[error(transparent)]
+    ProgressStyle(#[from] indicatif::style::TemplateError),
 }
 
 impl From<Error> for i32 {
@@ -87,6 +100,7 @@ impl From<Error> for i32 {
         match error {
             Error::NoWayHome => exitcode::IOERR,
             Error::NoWayConfig => exitcode::IOERR,
+            Error::NoWayData => exitcode::IOERR,
             Error::Toml(..) => exitcode::CONFIG,
             Error::DependencyNotFound { .. } => exitcode::CONFIG,
             Error::CircularDependencies { .. } => exitcode::CONFIG,
@@ -96,6 +110,9 @@ impl From<Error> for i32 {
             Error::Io(..) => exitcode::IOERR,
             Error::SyscallNonInteractive { .. } => exitcode::OSERR,
             Error::SyscallInteractive { .. } => exitcode::OSERR,
+            Error::Git2(..) => exitcode::SOFTWARE,
+            Error::Git2FileNotFound { .. } => exitcode::SOFTWARE,
+            Error::ProgressStyle(..) => exitcode::SOFTWARE,
         }
     }
 }
