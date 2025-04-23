@@ -11,9 +11,23 @@ version = 2
 multiple-versions = "deny"
 wildcards = "deny"
 skip = [
+  { name = "bitflags", version = "1.3.2" },
+  { name = "getrandom", version = "0.2.15" },
+  { name = "mio", version = "0.8.11" },
   { name = "regex-automata", version = "0.1.10" },
   { name = "regex-syntax", version = "0.6.29" },
+  { name = "unicode-width", version = "0.1.14" },
+  { name = "wasi", version = "0.11.0" },
+  { name = "windows-sys", version = "0.48.0" },
   { name = "windows-sys", version = "0.52.0" },
+  { name = "windows-targets", version = "0.48.5" },
+  { name = "windows_aarch64_gnullvm", version = "0.48.5" },
+  { name = "windows_aarch64_msvc", version = "0.48.5" },
+  { name = "windows_i686_gnu", version = "0.48.5" },
+  { name = "windows_i686_msvc", version = "0.48.5" },
+  { name = "windows_x86_64_gnu", version = "0.48.5" },
+  { name = "windows_x86_64_gnullvm", version = "0.48.5" },
+  { name = "windows_x86_64_msvc", version = "0.48.5" },
 ]
 
 [sources]
@@ -27,4 +41,5 @@ allow = [
   "MIT",
   "Unicode-3.0",
   "MPL-2.0",
+  "BSD-2-Clause",
 ]
