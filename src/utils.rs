@@ -161,8 +161,7 @@ mod tests {
         "invalid pattern"
     )]
     #[test]
-    fn smoke_glob_match(patterns: Vec<String>, entries: Vec<String>, expect: Vec<String>) {
-        let mut expect = expect.into_iter().map(Into::into).collect::<Vec<String>>();
+    fn smoke_glob_match(patterns: Vec<String>, entries: Vec<String>, mut expect: Vec<String>) {
         let mut result = glob_match(patterns, entries);
         expect.sort();
         result.sort();
