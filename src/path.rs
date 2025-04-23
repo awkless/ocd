@@ -44,9 +44,9 @@ pub fn config_dir() -> Result<PathBuf> {
 ///
 /// # Errors
 ///
-/// - Return [`Error::NowWayData`] if path to configuration directory cannot be determined.
+/// - Return [`Error::NoWayData`] if path to configuration directory cannot be determined.
 ///
-/// [`Error::NowWayData`]: crate::Error::NowWayData
+/// [`Error::NoWayData`]: crate::Error::NoWayData
 pub fn data_dir() -> Result<PathBuf> {
     let path = dirs::data_dir()
         .map(|path| path.join("ocd"))
