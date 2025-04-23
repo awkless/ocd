@@ -41,10 +41,15 @@
 
 #![allow(dead_code)]
 
+pub(crate) mod command;
+pub(crate) mod fs;
 pub(crate) mod model;
 pub(crate) mod path;
 pub(crate) mod store;
 pub(crate) mod utils;
+
+#[doc(hidden)]
+pub use command::Ocd;
 
 /// All possible error variants that OCD can encounter during runtime.
 #[derive(Debug, thiserror::Error)]
