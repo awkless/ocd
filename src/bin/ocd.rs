@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
-use ocd::exit_status_from_error;
+use ocd::{Ocd, exit_status_from_error};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use clap::Parser;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
@@ -26,5 +27,6 @@ async fn main() {
 }
 
 async fn run() -> Result<()> {
-    todo!();
+    let ocd = Ocd::parse();
+    ocd.run().await.with_context(|| "Command failure")
 }
