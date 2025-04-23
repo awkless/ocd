@@ -36,6 +36,7 @@ exitcode = "1.1.2"
 futures = "0.3.31"
 git2 = "0.20.1"
 indicatif = "0.17.11"
+inquire = "0.7.5"
 shellexpand = "3.1.1"
 thiserror = "2.0.12"
 tokio = { version = "1.44.2", features = ["full"] }
