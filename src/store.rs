@@ -11,7 +11,7 @@
 //! repository store at the bottom.
 
 use crate::{
-    model::{Cluster, DeploymentKind, DirAlias},
+    model::{Cluster, NodeEntry, DeploymentKind, DirAlias},
     path::data_dir,
     utils::{glob_match, syscall_interactive, syscall_non_interactive},
     Error, Result,
@@ -90,6 +90,27 @@ impl Root {
         }
 
         Ok(root)
+    }
+}
+
+/// Manage node repository in repository store.
+#[derive(Debug)]
+pub struct Node(Git);
+
+impl Node {
+    /// Construct new node by opening existing node repository.
+    ///
+    /// # Error
+    ///
+    /// - Return [`Error::Git2`] if repository could not be opened.
+    pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self>  {
+        let repo = Git::builder(data_dir()?.join(name.as_ref()))
+            .kind(node.deployment.clone())
+            .url(&node.url)
+            .excluded(node.excluded.iter().flatten())
+            .open()?;
+
+        Ok(Self(repo))
     }
 }
 
