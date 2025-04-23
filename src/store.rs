@@ -516,6 +516,26 @@ impl GitBuilder {
             repository,
         })
     }
+
+    /// Build [`Git`] by opening existing repository.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] if repository could not be opened.
+    pub fn open(mut self) -> Result<Git> {
+        let repository = git2::Repository::open(&self.path)?;
+        self.excluded.set_sparse_path(repository.path());
+
+        Ok(Git {
+            name: self.name,
+            kind: self.kind,
+            url: self.url,
+            path: self.path,
+            excluded: self.excluded,
+            authenticator: self.authenticator,
+            repository,
+        })
+    }
 }
 
 /// Variants of repository index deployment state.
