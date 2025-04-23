@@ -533,11 +533,11 @@ mod tests {
 
     #[test_case(
         r#"
-            dir_alias = "/some/path"
+            dir_alias = "some/path"
             excluded = ["rule1", "rule2", "rule3"]
         "#,
         RootEntry {
-            dir_alias: DirAlias::new("/some/path"),
+            dir_alias: DirAlias::new("some/path"),
             excluded: Some(vec!["rule1".into(), "rule2".into(), "rule3".into()]),
         };
         "full fields"
@@ -545,12 +545,12 @@ mod tests {
     #[test_case(
         "",
         RootEntry {
-            dir_alias: DirAlias::new("/home/user/.config/ocd"),
+            dir_alias: DirAlias::new("home/user/.config/ocd"),
             excluded: None,
         };
         "missing all fields"
     )]
-    #[sealed_test(env = [("HOME", "/home/user"), ("XDG_CONFIG_HOME", "/home/user/.config")])]
+    #[sealed_test(env = [("HOME", "home/user"), ("XDG_CONFIG_HOME", "home/user/.config")])]
     fn smoke_cluster_from_str_root_deserialize(config: &str, expect: RootEntry) -> Result<()> {
         let cluster: Cluster = config.parse()?;
         pretty_assertions::assert_eq!(cluster.root, expect);
@@ -575,7 +575,7 @@ mod tests {
             dependencies = ["prompt"]
 
             [nodes.prompt]
-            deployment = { kind = "bare_alias", dir_alias = "/some/path" }
+            deployment = { kind = "bare_alias", dir_alias = "some/path" }
             url = "https://some/url"
             excluded = ["rule1", "rule2", "rule3"]
         "#,
@@ -600,7 +600,7 @@ mod tests {
             (
                 "sh".into(),
                 NodeEntry {
-                    deployment: DeploymentKind::BareAlias(DirAlias::new("/home/user")),
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("home/user")),
                     url: "https://some/url".into(),
                     dependencies: Some(vec!["prompt".into()]),
                     ..Default::default()
@@ -609,7 +609,7 @@ mod tests {
             (
                 "prompt".into(),
                 NodeEntry {
-                    deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path")),
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("some/path")),
                     url: "https://some/url".into(),
                     excluded: Some(vec!["rule1".into(), "rule2".into(), "rule3".into()]),
                     ..Default::default()
@@ -643,7 +643,7 @@ mod tests {
         ];
         "missing fields"
     )]
-    #[sealed_test(env = [("HOME", "/home/user")])]
+    #[sealed_test(env = [("HOME", "home/user")])]
     fn smoke_cluster_from_str_node_deserialize(
         config: &str,
         mut expect: Vec<(String, NodeEntry)>,
@@ -776,7 +776,7 @@ mod tests {
         }
     }
 
-    #[sealed_test(env = [("CUSTOM_VAR", "/some/path")])]
+    #[sealed_test(env = [("CUSTOM_VAR", "some/path")])]
     fn smoke_cluster_from_str_expand_dir_aliases() -> Result<()> {
         let config = r#"
             dir_alias = "$CUSTOM_VAR/ocd"
@@ -792,7 +792,7 @@ mod tests {
         "#;
         let cluster: Cluster = config.parse()?;
         let expect = RootEntry {
-            dir_alias: DirAlias::new("/some/path/ocd"),
+            dir_alias: DirAlias::new("some/path/ocd"),
             ..Default::default()
         };
         pretty_assertions::assert_eq!(cluster.root, expect);
@@ -801,21 +801,21 @@ mod tests {
             (
                 "vim".to_string(),
                 NodeEntry {
-                    deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path/vimrc")),
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("some/path/vimrc")),
                     ..Default::default()
                 },
             ),
             (
                 "bash".to_string(),
                 NodeEntry {
-                    deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path/bash")),
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("some/path/bash")),
                     ..Default::default()
                 },
             ),
             (
                 "fish".to_string(),
                 NodeEntry {
-                    deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path/fish")),
+                    deployment: DeploymentKind::BareAlias(DirAlias::new("some/path/fish")),
                     ..Default::default()
                 },
             ),
@@ -865,7 +865,7 @@ mod tests {
         "#},
         "vim",
         NodeEntry {
-            deployment: DeploymentKind::BareAlias(DirAlias::new("/home/user")),
+            deployment: DeploymentKind::BareAlias(DirAlias::new("home/user")),
             url: "https://some/url".into(),
             ..Default::default()
         },
@@ -891,7 +891,7 @@ mod tests {
         "#},
         "vim",
         NodeEntry {
-            deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path")),
+            deployment: DeploymentKind::BareAlias(DirAlias::new("some/path")),
             url: "https://some/url".into(),
             ..Default::default()
         },
@@ -902,7 +902,7 @@ mod tests {
             url = "https://some/url"
 
             [nodes.vim]
-            deployment = { kind = "bare_alias", dir_alias = "/some/path" }
+            deployment = { kind = "bare_alias", dir_alias = "some/path" }
             url = "https://some/url"
         "#},
         Ok(None);
@@ -916,13 +916,13 @@ mod tests {
         "#},
         "dwm",
         NodeEntry {
-            deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path")),
+            deployment: DeploymentKind::BareAlias(DirAlias::new("some/path")),
             url: "https://some/url".into(),
             ..Default::default()
         },
         indoc! {r#"
             [nodes.dwm]
-            deployment = { kind = "bare_alias", dir_alias = "/some/path" }
+            deployment = { kind = "bare_alias", dir_alias = "some/path" }
             url = "https://some/url"
         "#},
         Ok(
@@ -941,13 +941,13 @@ mod tests {
         "#},
         "dwm",
         NodeEntry {
-            deployment: DeploymentKind::BareAlias(DirAlias::new("/some/path")),
+            deployment: DeploymentKind::BareAlias(DirAlias::new("some/path")),
             url: "https://some/url".into(),
             ..Default::default()
         },
         indoc! {r#"
             [nodes.dwm]
-            deployment = { kind = "bare_alias", dir_alias = "/some/path" }
+            deployment = { kind = "bare_alias", dir_alias = "some/path" }
             url = "https://some/url"
             # This comment should remain!
         "#},
@@ -962,7 +962,7 @@ mod tests {
         Err(anyhow::anyhow!("should fail"));
         "not table"
     )]
-    #[sealed_test(env = [("HOME", "/home/user")])]
+    #[sealed_test(env = [("HOME", "home/user")])]
     fn smoke_cluster_add_node(
         config: &str,
         key: &str,
