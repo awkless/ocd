@@ -43,6 +43,7 @@
 
 pub(crate) mod model;
 pub(crate) mod path;
+pub(crate) mod utils;
 
 /// All possible error variants that OCD can encounter during runtime.
 #[derive(Debug, thiserror::Error)]
@@ -70,6 +71,15 @@ pub enum Error {
 
     #[error(transparent)]
     Shellexpand(#[from] shellexpand::LookupError<std::env::VarError>),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+
+    #[error("Program {program:?} called non-interactively, but failed to execute\n{message}")]
+    SyscallNonInteractive { program: String, message: String },
+
+    #[error("Program {program:?} called interactively, but failed to execute")]
+    SyscallInteractive { program: String },
 }
 
 impl From<Error> for i32 {
@@ -83,6 +93,9 @@ impl From<Error> for i32 {
             Error::EntryNotTable { .. } => exitcode::CONFIG,
             Error::EntryNotFound { .. } => exitcode::CONFIG,
             Error::Shellexpand(..) => exitcode::IOERR,
+            Error::Io(..) => exitcode::IOERR,
+            Error::SyscallNonInteractive { .. } => exitcode::OSERR,
+            Error::SyscallInteractive { .. } => exitcode::OSERR,
         }
     }
 }
