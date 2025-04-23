@@ -8,7 +8,7 @@
 
 use crate::{Error, Result};
 
-use std::path::PathBuf;
+use std::{fs::create_dir_all, path::PathBuf};
 
 /// Get absolute path to user's home directory.
 ///
@@ -29,9 +29,15 @@ pub fn home_dir() -> Result<PathBuf> {
 ///
 /// [`Error::NoWayConfig`]: crate::Error::NoWayConfig
 pub fn config_dir() -> Result<PathBuf> {
-    dirs::config_dir()
+    let path = dirs::config_dir()
         .map(|path| path.join("ocd"))
-        .ok_or(Error::NoWayConfig)
+        .ok_or(Error::NoWayConfig)?;
+
+    if !path.exists() {
+        create_dir_all(&path)?;
+    }
+
+    Ok(path)
 }
 
 /// Get absolute path to OCD's data directory.
@@ -42,7 +48,13 @@ pub fn config_dir() -> Result<PathBuf> {
 ///
 /// [`Error::NowWayData`]: crate::Error::NowWayData
 pub fn data_dir() -> Result<PathBuf> {
-    dirs::data_dir()
+    let path = dirs::data_dir()
         .map(|path| path.join("ocd"))
-        .ok_or(Error::NoWayData)
+        .ok_or(Error::NoWayData)?;
+
+    if !path.exists() {
+        create_dir_all(&path)?;
+    }
+
+    Ok(path)
 }
