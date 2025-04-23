@@ -31,7 +31,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tracing::{info, instrument, warn, debug};
+use tracing::{debug, info, instrument, warn};
 
 /// Manage root repository in repository store.
 pub struct Root(Git);
@@ -153,7 +153,10 @@ impl MultiNodeClone {
 
         // TODO: Report all failures instead of the first occurance of a failure.
         let results = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
-        let _ = results.into_iter().flatten().collect::<Result<Vec<_>, _>>()?;
+        let _ = results
+            .into_iter()
+            .flatten()
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(())
     }

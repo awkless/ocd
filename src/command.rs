@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    path::{data_dir, config_dir},
-    model::Cluster,
-    store::{Root, MultiNodeClone},
     fs::read_to_config,
+    model::Cluster,
+    path::{config_dir, data_dir},
+    store::{MultiNodeClone, Root},
     Result,
 };
 

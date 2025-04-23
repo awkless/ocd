@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
-use ocd::{Ocd, exit_status_from_error};
+use ocd::{exit_status_from_error, Ocd};
 
 use anyhow::{Context, Result};
 use clap::Parser;

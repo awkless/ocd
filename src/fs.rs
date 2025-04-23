@@ -8,15 +8,12 @@
 
 use crate::{Error, Result};
 
-use std::{
-    fs::read_to_string,
-    path::Path,
-};
+use std::{fs::read_to_string, path::Path};
 
 pub fn read_to_config<C>(path: impl AsRef<Path>) -> Result<C>
 where
     C: std::str::FromStr<Err = Error>,
-{ 
+{
     let data = match read_to_string(path.as_ref()) {
         Ok(data) => Ok(data),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
