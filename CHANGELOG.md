@@ -5,6 +5,17 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.2.0] - 2025-04-23
+
+### Added
+
+- Implement OCD deploy command.
+- Add deployment methods to `crate::store::{Root, Node}` types.
+- Add `Cluster::get_node` to get node entries from cluster definition.
+- Add `Node::new_open` to open existing node in repository store.
+- Add `Root::new_open` to open existing root in repository store.
+- Add `GitBuilder::open` to allow for opening existing repositories.
+
 ## [0.1.0] - 2025-04-23
 
 ### Added
