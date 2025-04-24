@@ -867,9 +867,9 @@ mod tests {
     fn smoke_cluster_get_node(
         config: &str,
         key: &str,
-        expect: Result<NodeEntry, anyhow::Error>
+        expect: Result<NodeEntry, anyhow::Error>,
     ) -> Result<()> {
-        let cluster: Cluster = config.parse()?; 
+        let cluster: Cluster = config.parse()?;
         match expect {
             Ok(expect) => {
                 let result = cluster.get_node(key)?;
