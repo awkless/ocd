@@ -47,6 +47,17 @@ impl Cluster {
         Cluster::default()
     }
 
+    /// Get node entry from cluster definition.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::EntryNotFound`] if node does not exist in cluster definition.
+    pub fn get_node(&self, name: impl AsRef<str>) -> Result<&NodeEntry> {
+        self.nodes.get(name.as_ref()).ok_or(Error::EntryNotFound {
+            name: name.as_ref().into(),
+        })
+    }
+
     /// Add node entry into cluster definition.
     ///
     /// Will replace existing node entry if given node entry was not new, returning the old entry
@@ -827,6 +838,45 @@ mod tests {
         result.sort_by(|(a, _), (b, _)| a.cmp(b));
         expect.sort_by(|(a, _), (b, _)| a.cmp(b));
         pretty_assertions::assert_eq!(result, expect);
+
+        Ok(())
+    }
+
+    #[test_case(
+        r#"
+            [nodes.dwm]
+            deployment = "normal"
+            url = "https://some/url"
+        "#,
+        "dwm",
+        Ok(
+            NodeEntry {
+                url: "https://some/url".into(),
+                ..Default::default()
+            }
+        );
+        "node exists"
+    )]
+    #[test_case(
+        "# Nothing here",
+        "fail",
+        Err(anyhow::anyhow!("should fail"));
+        "undefined node"
+    )]
+    #[test]
+    fn smoke_cluster_get_node(
+        config: &str,
+        key: &str,
+        expect: Result<NodeEntry, anyhow::Error>
+    ) -> Result<()> {
+        let cluster: Cluster = config.parse()?; 
+        match expect {
+            Ok(expect) => {
+                let result = cluster.get_node(key)?;
+                pretty_assertions::assert_eq!(&expect, result);
+            }
+            Err(_) => assert!(cluster.get_node(key).is_err()),
+        }
 
         Ok(())
     }
