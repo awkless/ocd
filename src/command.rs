@@ -46,6 +46,7 @@ impl Ocd {
         match self.command {
             Command::Clone(opts) => run_clone(opts).await,
             Command::Deploy(opts) => run_deploy(opts),
+            Command::Undeploy(opts) => run_undeploy(opts),
         }
     }
 }
@@ -60,6 +61,10 @@ pub enum Command {
     /// Deploy node of cluster.
     #[command(override_usage = "ocd deploy [options] [pattern]...")]
     Deploy(DeployOptions),
+
+    /// Undeploy nodes of cluster.
+    #[command(override_usage = "ocd undeploy [options] [pattern]...")]
+    Undeploy(UndeployOptions),
 }
 
 /// Clone existing cluster.
@@ -92,6 +97,23 @@ pub struct DeployOptions {
     pub with_excluded: bool,
 }
 
+/// Undeploy nodes of cluster.
+#[derive(Parser, Clone, Debug)]
+#[command(author, about, long_about)]
+pub struct UndeployOptions {
+    /// List of nodes to undeploy ("root" cannot be undeployed).
+    #[arg(value_parser, num_args = 1.., value_delimiter = ',', value_name = "pattern")]
+    pub patterns: Vec<String>,
+
+    /// Do not undeploy dependencies of target nodes.
+    #[arg(short, long)]
+    pub only: bool,
+
+    /// Undeploy excluded files only.
+    #[arg(short, long)]
+    pub excluded_only: bool,
+}
+
 async fn run_clone(opts: CloneOptions) -> Result<()> {
     let _ = match Root::new_clone(&opts.url) {
         Ok(root) => root,
@@ -117,6 +139,42 @@ pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
         DeployAction::DeployAll
     } else {
         DeployAction::Deploy
+    };
+
+    opts.patterns.dedup();
+    for pattern in &mut opts.patterns {
+        pattern.retain(|c| !c.is_whitespace());
+    }
+
+    if let Some(index) = opts.patterns.iter().position(|x| *x == "root") {
+        opts.patterns.swap_remove(index);
+        root.deploy(action)?;
+    }
+
+    let targets = glob_match(&opts.patterns, cluster.nodes.keys());
+    for target in &targets {
+        if opts.only {
+            let entry = cluster.get_node(target)?;
+            let node = Node::new_open(target, entry)?;
+            node.deploy(action)?;
+        } else {
+            for (name, entry) in cluster.dependency_iter(target) {
+                let node = Node::new_open(name, entry)?;
+                node.deploy(action)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
+    let root = Root::new_open()?;
+    let cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+    let action = if opts.excluded_only {
+        DeployAction::UndeployExcludes
+    } else {
+        DeployAction::Undeploy
     };
 
     opts.patterns.dedup();
