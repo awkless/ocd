@@ -5,6 +5,13 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.3.0] - 2025-04-23
+
+### Added
+
+- Implement OCD undeploy command.
+    - Simply the opposite of deploy command.
+
 ## [0.2.0] - 2025-04-23
 
 ### Added
@@ -71,4 +78,6 @@ SPDX-License-Identifier: MIT
 - Add CC0-1.0 license.
 - Add MIT license.
 
+[0.3.0]: https://github.com/awkless/ocd/tag/v0.3.0
+[0.2.0]: https://github.com/awkless/ocd/tag/v0.2.0
 [0.1.0]: https://github.com/awkless/ocd/tag/v0.1.0
