@@ -11,7 +11,7 @@
 //! repository store at the bottom.
 
 use crate::{
-    model::{Cluster, NodeEntry, DeploymentKind, DirAlias},
+    model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
     path::data_dir,
     utils::{glob_match, syscall_interactive, syscall_non_interactive},
     Error, Result,
@@ -81,7 +81,8 @@ impl Root {
         let repo = Git::builder(data_dir()?.join("root")).open()?;
         let cluster: Cluster = repo.extract_file_data("cluster.toml")?.parse()?;
         let mut root = Self(repo);
-        root.0.set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
+        root.0
+            .set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
         root.0.set_excluded(cluster.root.excluded.iter().flatten());
 
         if !root.0.is_deployed(DeployState::WithoutExcluded) {
@@ -90,6 +91,31 @@ impl Root {
         }
 
         Ok(root)
+    }
+
+    /// Dpeloy root repository.
+    ///
+    /// Will warn if user tries to undeploy the root repository, and will warn if the user tries to
+    /// deploy the root repository even though it should always be deployed.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if deployment action fails.
+    #[instrument(skip(self, action))]
+    pub fn deploy(&self, action: DeployAction) -> Result<()> {
+        match action {
+            DeployAction::Deploy => {
+                warn!("Root repository should always be deployed");
+                return Ok(());
+            }
+            DeployAction::Undeploy => {
+                warn!("Root repository cannot be undeployed");
+                return Ok(());
+            }
+            DeployAction::DeployAll | DeployAction::UndeployExcludes => (),
+        }
+
+        self.0.deploy(action)
     }
 }
 
@@ -103,7 +129,7 @@ impl Node {
     /// # Error
     ///
     /// - Return [`Error::Git2`] if repository could not be opened.
-    pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self>  {
+    pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         let repo = Git::builder(data_dir()?.join(name.as_ref()))
             .kind(node.deployment.clone())
             .url(&node.url)
@@ -111,6 +137,15 @@ impl Node {
             .open()?;
 
         Ok(Self(repo))
+    }
+
+    /// Deploy node repository.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if deployment action fails for whatever reason.
+    pub fn deploy(&self, action: DeployAction) -> Result<()> {
+        self.0.deploy(action)
     }
 }
 
