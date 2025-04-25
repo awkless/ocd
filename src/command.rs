@@ -17,7 +17,7 @@ use crate::{
 
 use clap::{Parser, Subcommand};
 use inquire::prompt_confirmation;
-use std::{fs::remove_dir_all, path::PathBuf};
+use std::{ffi::OsString, fs::remove_dir_all, path::PathBuf};
 use tracing::{instrument, warn};
 
 /// OCD public command set CLI.
@@ -51,6 +51,7 @@ impl Ocd {
             Command::Deploy(opts) => run_deploy(opts),
             Command::Undeploy(opts) => run_undeploy(opts),
             Command::Remove(opts) => run_remove(opts),
+            Command::Git(opts) => run_git(opts),
         }
     }
 }
@@ -77,6 +78,10 @@ pub enum Command {
     /// Remove target node from cluster.
     #[command(name = "rm", override_usage = "ocd rm [options] [pattern]...")]
     Remove(RemoveOptions),
+
+    /// Git binary shortcut.
+    #[command(external_subcommand)]
+    Git(Vec<OsString>),
 }
 
 /// Clone existing cluster.
@@ -197,8 +202,7 @@ pub fn run_init(opts: InitOptions) -> Result<()> {
             deployment,
             ..Default::default()
         };
-        let name = opts.node_name.as_ref().ok_or(Error::NoNodeName)?;
-        let _ = Node::new_init(name, &node)?;
+        let name = opts.node_name.as_ref().ok_or(Error::NoNodeName)?; let _ = Node::new_init(name, &node)?;
 
         cluster.add_node(name, node)?;
     }
@@ -280,9 +284,9 @@ fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
     Ok(())
 }
 
-#[instrument]
+#[instrument(skip(opts))]
 fn run_remove(mut opts: RemoveOptions) -> Result<()> {
-    let mut cluster: Cluster = read_to_config(data_dir()?.join("cluster"))?;
+    let mut cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
 
     opts.patterns.dedup();
     for pattern in &mut opts.patterns {
@@ -306,6 +310,31 @@ fn run_remove(mut opts: RemoveOptions) -> Result<()> {
         let repo = Node::new_open(target, &node)?;
         repo.deploy(DeployAction::Undeploy)?;
         remove_dir_all(repo.path())?;
+    }
+
+    write_to_config(config_dir()?.join("cluster.toml"), cluster.to_string())?;
+
+    Ok(())
+}
+
+fn run_git(opts: Vec<OsString>) -> Result<()> {
+    let cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+    let mut patterns = opts[0].to_string_lossy().into_owned();
+    patterns.retain(|c| !c.is_whitespace());
+    let mut patterns: Vec<&str> = patterns.split(',').collect();
+    patterns.dedup();
+
+    if let Some(index) = patterns.iter().position(|x| *x == "root") {
+        patterns.swap_remove(index);
+        let root = Root::new_open()?;
+        root.gitcall(opts[1..].to_vec())?;
+    }
+
+    let targets = glob_match(patterns, cluster.nodes.keys());
+    for target in &targets {
+        let node = cluster.get_node(target)?;
+        let node = Node::new_open(target, &node)?;
+        node.gitcall(opts[1..].to_vec())?;
     }
 
     Ok(())
