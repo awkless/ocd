@@ -5,6 +5,13 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.5.0] - 2025-04-25
+
+### Added
+
+- Implement OCD remove command.
+- Add `Root::nuke` to nuke cluster through root repository.
+
 ## [0.4.0] - 2025-04-24
 
 ### Added
