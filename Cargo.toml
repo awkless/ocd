@@ -11,7 +11,7 @@ readme = "README.md"
 authors = ["Jason Pena <jasonpena@awkless.com>"]
 edition = "2021"
 license = "MIT"
-version = "0.5.0"
+version = "0.6.0"
 rust-version = "1.77.2"
 
 [profile.release]
