@@ -139,9 +139,24 @@ impl Root {
 pub struct Node(Git);
 
 impl Node {
+    /// Initialize new node repository in repository store.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] if repository could not be initialized.
+    pub fn new_init(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
+        let repo = Git::builder(data_dir()?.join(name.as_ref()))
+            .kind(node.deployment.clone())
+            .url(&node.url)
+            .excluded(node.excluded.iter().flatten())
+            .init()?;
+
+        Ok(Self(repo))
+    }
+
     /// Construct new node by opening existing node repository.
     ///
-    /// # Error
+    /// # Errors
     ///
     /// - Return [`Error::Git2`] if repository could not be opened.
     pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
