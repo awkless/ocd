@@ -19,7 +19,7 @@ use crate::{
 
 use auth_git2::{GitAuthenticator, Prompter};
 use futures::{stream, StreamExt};
-use git2::{build::RepoBuilder, Config, FetchOptions, RemoteCallbacks, Repository};
+use git2::{build::RepoBuilder, Config, FetchOptions, RemoteCallbacks, Repository, RepositoryInitOptions};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use inquire::{Password, Text};
 use std::{
@@ -66,6 +66,21 @@ impl Root {
         root.0.deploy(DeployAction::Deploy)?;
 
         Ok(root)
+    }
+
+    /// Initialize new root repository.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Git2`] if root repository could not be initialized.
+    #[instrument]
+    pub fn new_init() -> Result<Self> {
+        info!("Initialize root repository");
+        let root = Git::builder(data_dir()?.join("root"))
+            .kind(DeploymentKind::BareAlias(DirAlias::default()))
+            .init()?;
+
+        Ok(Self(root))
     }
 
     /// Construct new root by opening existing root repository.
@@ -597,13 +612,42 @@ impl GitBuilder {
         })
     }
 
+    /// Build [`Git`] by initializing new repository.
+    ///
+    /// # Errors
+    ///
+    /// - Return `Error::Git2` if repository could not be initialized.
+    pub fn init(mut self) -> Result<Git> {
+        let mut opts = RepositoryInitOptions::new();
+        opts.bare(self.kind.is_bare());
+        let repository = Repository::init_opts(&self.path, &opts)?;
+
+        if self.kind.is_bare() {
+            let mut config = repository.config().map_err(Error::from)?;
+            config.set_str("status.showUntrackedFiles", "no")?;
+            config.set_str("core.sparseCheckout", "true")?;
+        }
+
+        self.excluded.set_sparse_path(repository.path());
+
+        Ok(Git {
+            name: self.name,
+            kind: self.kind,
+            url: self.url,
+            path: self.path,
+            excluded: self.excluded,
+            authenticator: self.authenticator,
+            repository,
+        })
+    }
+
     /// Build [`Git`] by opening existing repository.
     ///
     /// # Errors
     ///
     /// - Return [`Error::Git2`] if repository could not be opened.
     pub fn open(mut self) -> Result<Git> {
-        let repository = git2::Repository::open(&self.path)?;
+        let repository = Repository::open(&self.path)?;
         self.excluded.set_sparse_path(repository.path());
 
         Ok(Git {
