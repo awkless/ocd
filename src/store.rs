@@ -102,7 +102,7 @@ impl Root {
             .set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
         root.0.set_excluded(cluster.root.excluded.iter().flatten());
 
-        if !root.0.is_deployed(DeployState::WithoutExcluded) {
+        if !root.0.is_deployed(DeployState::WithoutExcluded)? {
             warn!("Deploy root repository, because it was not already deployed");
             root.0.deploy(DeployAction::Deploy)?;
         }
@@ -161,9 +161,21 @@ impl Root {
         }
 
         remove_dir_all(config_dir()?)?;
+        info!("Configuration directory removed");
         remove_dir_all(data_dir()?)?;
+        info!("Data directory removed");
 
         Ok(())
+    }
+
+    /// Make interactive call to Git binary.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if Git binary cannot be found.
+    /// - Will fail if provided arguments are invalid.
+    pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
+        self.0.gitcall_interactive(args)
     }
 }
 
@@ -216,6 +228,16 @@ impl Node {
     /// - Will fail if deployment action fails for whatever reason.
     pub fn deploy(&self, action: DeployAction) -> Result<()> {
         self.0.deploy(action)
+    }
+
+    /// Make interactive call to Git binary.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if Git binary cannot be found.
+    /// - Will fail if provided arguments are invalid.
+    pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
+        self.0.gitcall_interactive(args)
     }
 }
 
@@ -357,30 +379,59 @@ impl Git {
         self.kind.is_bare() && self.repository.is_bare()
     }
 
+    /// Determine if repository is empty.
+    ///
+    /// Empty in this case simply means that a repository has no commits.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for any repository operation failure.
+    pub(crate) fn is_empty(&self) -> Result<bool> {
+        match self.repository.head() {
+            Ok(_) => {
+                let mut revwalk = self.repository.revwalk()?;
+                revwalk.push_head()?;
+                let mut no_commits = true;
+
+                for oid in revwalk {
+                    if let Ok(_) = oid {
+                        no_commits = false;
+                        break;
+                    }
+                }
+
+                Ok(no_commits)
+            }
+            Err(_) => {
+                Ok(true)
+            }
+        }
+    }
+
     /// Determine if repository is currently deployed.
-    pub(crate) fn is_deployed(&self, state: DeployState) -> bool {
-        if !self.repository.path().exists() {
-            return false;
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for any repository operation failure.
+    pub(crate) fn is_deployed(&self, state: DeployState) -> Result<bool> {
+        if self.is_empty()? {
+            return Ok(false);
         }
 
         let worktree = match &self.kind {
-            DeploymentKind::Normal => return false,
+            DeploymentKind::Normal => return Ok(false),
             DeploymentKind::BareAlias(worktree) => worktree,
         };
 
-        let index = match self.repository.index() {
-            Ok(index) => index,
-            Err(_) => return false,
-        };
-
-        if index.is_empty() {
-            return false;
+        // Thank you Eric at https://www.hydrogen18.com/blog/list-all-files-git-repo-pygit2.html.
+        let mut entries = Vec::new();
+        let commit = self.repository.head()?.peel_to_commit()?;
+        let tree = commit.tree()?;
+        for entry in tree.iter() {
+            if let Some(filename) = entry.name() {
+                entries.push(filename.to_string());
+            }
         }
-
-        let mut entries: Vec<String> = index
-            .iter()
-            .map(|b| String::from_utf8_lossy(b.path.as_ref()).into_owned())
-            .collect();
 
         if state == DeployState::WithoutExcluded {
             let excludes = glob_match(self.excluded.iter(), entries.iter());
@@ -390,11 +441,11 @@ impl Git {
         for entry in entries {
             let path = worktree.0.join(entry);
             if !path.exists() {
-                return false;
+                return Ok(false);
             }
         }
 
-        true
+        Ok(true)
     }
 
     /// Extract string data from target file in index.
@@ -406,7 +457,13 @@ impl Git {
     ///
     /// [`Error::Git2FileNotFound`]: crate::Error::Git2FileNotFound
     /// [`Error::Git2`]: crate::Error::Git2
+    #[instrument(skip(self, name))]
     pub(crate) fn extract_file_data(&self, name: impl AsRef<str>) -> Result<String> {
+        if self.is_empty()? {
+            warn!("Repository {:?} is empty, no {:?} file to extract", self.name, name.as_ref());
+            return Ok(String::default());
+        }
+
         let commit = self.repository.head()?.peel_to_commit()?;
         let tree = commit.tree()?;
         let entry = tree
@@ -417,7 +474,10 @@ impl Git {
             })?;
         let blob = entry.to_object(&self.repository)?.peel_to_blob()?;
 
-        Ok(String::from_utf8_lossy(blob.content()).into_owned())
+        let content = String::from_utf8_lossy(blob.content()).into_owned();
+        debug!("Extracted the following content from {:?}\n{content}", name.as_ref());
+
+        Ok(content)
     }
 
     /// Deploy repository index to target worktree alias based on selected deployment action.
@@ -431,13 +491,9 @@ impl Git {
     /// - Will fail if repository index cannot be deployed for whatever reason.
     #[instrument(skip(self, action))]
     pub(crate) fn deploy(&self, action: DeployAction) -> Result<()> {
-        let index = self.repository.index()?;
-        if index.is_empty() {
-            warn!(
-                "Repository {:?} has empty index, nothing to deploy",
-                self.name
-            );
-            return Ok(());
+        if self.is_empty()? {
+            warn!("Repository {:?} is empty, nothing to deploy", self.name());
+            return Ok(())
         }
 
         if !self.is_bare() {
@@ -450,7 +506,7 @@ impl Git {
 
         let msg = match action {
             DeployAction::Deploy => {
-                if self.is_deployed(DeployState::WithoutExcluded) {
+                if self.is_deployed(DeployState::WithoutExcluded)? {
                     warn!("Repository {:?} is already deployed", self.path);
                     return Ok(());
                 }
@@ -459,7 +515,7 @@ impl Git {
                 format!("deploy {:?}", self.path)
             }
             DeployAction::DeployAll => {
-                if self.is_deployed(DeployState::WithExcluded) {
+                if self.is_deployed(DeployState::WithExcluded)? {
                     warn!("Repository {:?} is already deployed fully", self.path);
                     return Ok(());
                 }
@@ -468,7 +524,7 @@ impl Git {
                 format!("deploy all of {:?}", self.path)
             }
             DeployAction::Undeploy => {
-                if !self.is_deployed(DeployState::WithoutExcluded) {
+                if !self.is_deployed(DeployState::WithoutExcluded)? {
                     warn!("Repository {:?} is already undeployed fully", self.path);
                     return Ok(());
                 }
@@ -477,7 +533,7 @@ impl Git {
                 format!("undeploy {:?}", self.path)
             }
             DeployAction::UndeployExcludes => {
-                if !self.is_deployed(DeployState::WithExcluded) {
+                if !self.is_deployed(DeployState::WithExcluded)? {
                     warn!("Repository {:?} excluded files are undeployed", self.path);
                     return Ok(());
                 }
