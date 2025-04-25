@@ -21,7 +21,6 @@ SPDX-License-Identifier: MIT
 - The `crate::store::Git::is_deployed` method now uses `Git::is_empty` instead
   of using the repository's index.
     - Fixes bug of empty repositories never being detected.
-  index to identify an empty repository.
 - The `crate::store::Git::is_deployed` method now revwalks through tree pointed
   to by HEAD in order to obtain valid filenames in the repository instead of
   iterating through the repository's index.
@@ -119,7 +118,7 @@ SPDX-License-Identifier: MIT
 - Add MIT license.
 
 [0.6.0]: https://github.com/awkless/ocd/tag/v0.6.0
-[0.4.0]: https://github.com/awkless/ocd/tag/v0.5.0
+[0.5.0]: https://github.com/awkless/ocd/tag/v0.5.0
 [0.4.0]: https://github.com/awkless/ocd/tag/v0.4.0
 [0.3.0]: https://github.com/awkless/ocd/tag/v0.3.0
 [0.2.0]: https://github.com/awkless/ocd/tag/v0.2.0
