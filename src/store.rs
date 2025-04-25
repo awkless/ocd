@@ -12,7 +12,7 @@
 
 use crate::{
     model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
-    path::data_dir,
+    path::{config_dir, data_dir},
     utils::{glob_match, syscall_interactive, syscall_non_interactive},
     Error, Result,
 };
@@ -27,7 +27,7 @@ use inquire::{Password, Text};
 use std::{
     ffi::OsString,
     fmt::Write as FmtWrite,
-    fs::File,
+    fs::{remove_dir_all, File},
     io::Write as IoWrite,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -134,6 +134,37 @@ impl Root {
 
         self.0.deploy(action)
     }
+
+    /// Undeploy and remove entire cluster.
+    ///
+    /// Will undeploy the root and all nodes, before deleting the cluster for good.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if cluster definition cannot be parsed.
+    /// - Will fail if root or node cannot be undeployed.
+    /// - Will fail if configuration directory cannot be deleted.
+    /// - Will fail if data directory cannot be deleted.
+    #[instrument(skip(self))]
+    pub fn nuke(&self) -> Result<()> {
+        self.0.deploy(DeployAction::Undeploy)?;
+
+        let cluster: Cluster = self.0.extract_file_data("cluster.toml")?.parse()?;
+        for (name, node) in &cluster.nodes {
+            if !data_dir()?.join(name).exists() {
+                warn!("Node {name:?} not found in repository store");
+                continue;
+            }
+
+            let repo = Node::new_open(name, node)?;
+            repo.deploy(DeployAction::Undeploy)?;
+        }
+
+        remove_dir_all(config_dir()?)?;
+        remove_dir_all(data_dir()?)?;
+
+        Ok(())
+    }
 }
 
 /// Manage node repository in repository store.
@@ -171,6 +202,11 @@ impl Node {
             .open()?;
 
         Ok(Self(repo))
+    }
+
+    /// Path to node repository.
+    pub fn path(&self) -> &Path {
+        self.0.path()
     }
 
     /// Deploy node repository.
@@ -291,6 +327,7 @@ pub(crate) struct Git {
 }
 
 impl Git {
+    /// Construct new Git repository through builder.
     pub(crate) fn builder(path: impl Into<PathBuf>) -> GitBuilder {
         GitBuilder::new(path.into())
     }
@@ -308,6 +345,11 @@ impl Git {
     /// Name of managed repository.
     pub(crate) fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Path of managed repository.
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
     }
 
     /// Determine if repository is bare.
@@ -389,6 +431,15 @@ impl Git {
     /// - Will fail if repository index cannot be deployed for whatever reason.
     #[instrument(skip(self, action))]
     pub(crate) fn deploy(&self, action: DeployAction) -> Result<()> {
+        let index = self.repository.index()?;
+        if index.is_empty() {
+            warn!(
+                "Repository {:?} has empty index, nothing to deploy",
+                self.name
+            );
+            return Ok(());
+        }
+
         if !self.is_bare() {
             warn!(
                 "Repository {:?} is normal, deployment unnecessary",

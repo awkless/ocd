@@ -16,7 +16,9 @@ use crate::{
 };
 
 use clap::{Parser, Subcommand};
+use inquire::prompt_confirmation;
 use std::{fs::remove_dir_all, path::PathBuf};
+use tracing::{instrument, warn};
 
 /// OCD public command set CLI.
 #[derive(Debug, Clone, Parser)]
@@ -48,6 +50,7 @@ impl Ocd {
             Command::Init(opts) => run_init(opts),
             Command::Deploy(opts) => run_deploy(opts),
             Command::Undeploy(opts) => run_undeploy(opts),
+            Command::Remove(opts) => run_remove(opts),
         }
     }
 }
@@ -70,6 +73,10 @@ pub enum Command {
     /// Undeploy nodes of cluster.
     #[command(override_usage = "ocd undeploy [options] [pattern]...")]
     Undeploy(UndeployOptions),
+
+    /// Remove target node from cluster.
+    #[command(name = "rm", override_usage = "ocd rm [options] [pattern]...")]
+    Remove(RemoveOptions),
 }
 
 /// Clone existing cluster.
@@ -138,6 +145,15 @@ pub struct UndeployOptions {
     /// Undeploy excluded files only.
     #[arg(short, long)]
     pub excluded_only: bool,
+}
+
+/// Remove target node from cluster.
+#[derive(Parser, Clone, Debug)]
+#[command(author, about, long_about)]
+pub struct RemoveOptions {
+    /// List of nodes to remove ("root" will nuke cluster).
+    #[arg(value_parser, num_args = 1.., value_delimiter = ',', value_name = "pattern")]
+    pub patterns: Vec<String>,
 }
 
 async fn run_clone(opts: CloneOptions) -> Result<()> {
@@ -259,6 +275,37 @@ fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
                 node.deploy(action)?;
             }
         }
+    }
+
+    Ok(())
+}
+
+#[instrument]
+fn run_remove(mut opts: RemoveOptions) -> Result<()> {
+    let mut cluster: Cluster = read_to_config(data_dir()?.join("cluster"))?;
+
+    opts.patterns.dedup();
+    for pattern in &mut opts.patterns {
+        pattern.retain(|c| !c.is_whitespace());
+    }
+
+    if let Some(index) = opts.patterns.iter().position(|x| *x == "root") {
+        warn!("Removing root will nuke your entire cluster");
+        if prompt_confirmation("Do you want to send your cluster to the gallows? [y/n]")? {
+            let root = Root::new_open()?;
+            root.nuke()?;
+            return Ok(());
+        } else {
+            opts.patterns.swap_remove(index);
+        }
+    }
+
+    let targets = glob_match(&opts.patterns, cluster.nodes.keys());
+    for target in &targets {
+        let node = cluster.remove_node(target)?;
+        let repo = Node::new_open(target, &node)?;
+        repo.deploy(DeployAction::Undeploy)?;
+        remove_dir_all(repo.path())?;
     }
 
     Ok(())
