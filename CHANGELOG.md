@@ -5,6 +5,29 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.6.0] - 2025-04-25
+
+### Added
+
+- Add Git shortcut to OCD CLI to call Git binary on target repository in
+  repository store interactively.
+- Add `Git::is_empty` as a better way to identify an empty repository.
+
+### Fixed
+
+- Fix `crate::command::run_remove`, i.e., remove command, by targeting
+  "cluster.toml" instead of "cluster", and actually writing changes to
+  configuration file through `crate::fs::write_to_config`.
+- The `crate::store::Git::is_deployed` method now uses `Git::is_empty` instead
+  of using the repository's index.
+    - Fixes bug of empty repositories never being detected.
+  index to identify an empty repository.
+- The `crate::store::Git::is_deployed` method now revwalks through tree pointed
+  to by HEAD in order to obtain valid filenames in the repository instead of
+  iterating through the repository's index.
+    - This fixes the bug of exclude patterns not matching files in repository,
+      and files not being properly deployed to directory alias.
+
 ## [0.5.0] - 2025-04-25
 
 ### Added
@@ -95,6 +118,8 @@ SPDX-License-Identifier: MIT
 - Add CC0-1.0 license.
 - Add MIT license.
 
+[0.6.0]: https://github.com/awkless/ocd/tag/v0.6.0
+[0.4.0]: https://github.com/awkless/ocd/tag/v0.5.0
 [0.4.0]: https://github.com/awkless/ocd/tag/v0.4.0
 [0.3.0]: https://github.com/awkless/ocd/tag/v0.3.0
 [0.2.0]: https://github.com/awkless/ocd/tag/v0.2.0
