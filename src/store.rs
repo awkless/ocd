@@ -393,11 +393,8 @@ impl Git {
                 revwalk.push_head()?;
                 let mut no_commits = true;
 
-                for oid in revwalk {
-                    if let Ok(_) = oid {
-                        no_commits = false;
-                        break;
-                    }
+                if revwalk.flatten().next().is_some() {
+                    no_commits = false;
                 }
 
                 Ok(no_commits)

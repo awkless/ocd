@@ -334,7 +334,7 @@ fn run_git(opts: Vec<OsString>) -> Result<()> {
     let targets = glob_match(patterns, cluster.nodes.keys());
     for target in &targets {
         let node = cluster.get_node(target)?;
-        let node = Node::new_open(target, &node)?;
+        let node = Node::new_open(target, node)?;
         node.gitcall(opts[1..].to_vec())?;
     }
 
