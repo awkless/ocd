@@ -402,9 +402,7 @@ impl Git {
 
                 Ok(no_commits)
             }
-            Err(_) => {
-                Ok(true)
-            }
+            Err(_) => Ok(true),
         }
     }
 
@@ -460,7 +458,11 @@ impl Git {
     #[instrument(skip(self, name))]
     pub(crate) fn extract_file_data(&self, name: impl AsRef<str>) -> Result<String> {
         if self.is_empty()? {
-            warn!("Repository {:?} is empty, no {:?} file to extract", self.name, name.as_ref());
+            warn!(
+                "Repository {:?} is empty, no {:?} file to extract",
+                self.name,
+                name.as_ref()
+            );
             return Ok(String::default());
         }
 
@@ -475,7 +477,10 @@ impl Git {
         let blob = entry.to_object(&self.repository)?.peel_to_blob()?;
 
         let content = String::from_utf8_lossy(blob.content()).into_owned();
-        debug!("Extracted the following content from {:?}\n{content}", name.as_ref());
+        debug!(
+            "Extracted the following content from {:?}\n{content}",
+            name.as_ref()
+        );
 
         Ok(content)
     }
@@ -493,7 +498,7 @@ impl Git {
     pub(crate) fn deploy(&self, action: DeployAction) -> Result<()> {
         if self.is_empty()? {
             warn!("Repository {:?} is empty, nothing to deploy", self.name());
-            return Ok(())
+            return Ok(());
         }
 
         if !self.is_bare() {

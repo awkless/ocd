@@ -202,7 +202,8 @@ pub fn run_init(opts: InitOptions) -> Result<()> {
             deployment,
             ..Default::default()
         };
-        let name = opts.node_name.as_ref().ok_or(Error::NoNodeName)?; let _ = Node::new_init(name, &node)?;
+        let name = opts.node_name.as_ref().ok_or(Error::NoNodeName)?;
+        let _ = Node::new_init(name, &node)?;
 
         cluster.add_node(name, node)?;
     }
