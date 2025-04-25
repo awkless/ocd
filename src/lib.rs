@@ -98,6 +98,9 @@ pub enum Error {
 
     #[error(transparent)]
     ProgressStyle(#[from] indicatif::style::TemplateError),
+
+    #[error("Node not given a name")]
+    NoNodeName,
 }
 
 impl From<Error> for i32 {
@@ -118,6 +121,7 @@ impl From<Error> for i32 {
             Error::Git2(..) => exitcode::SOFTWARE,
             Error::Git2FileNotFound { .. } => exitcode::SOFTWARE,
             Error::ProgressStyle(..) => exitcode::SOFTWARE,
+            Error::NoNodeName => exitcode::USAGE,
         }
     }
 }

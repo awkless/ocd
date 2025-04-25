@@ -7,16 +7,16 @@
 //! the OCD binary. The entire OCD command set is implemented right there!.
 
 use crate::{
-    fs::read_to_config,
-    model::Cluster,
-    path::{config_dir, data_dir},
+    fs::{read_to_config, write_to_config},
+    model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
+    path::{config_dir, data_dir, home_dir},
     store::{DeployAction, MultiNodeClone, Node, Root},
     utils::glob_match,
-    Result,
+    Error, Result,
 };
 
 use clap::{Parser, Subcommand};
-use std::fs::remove_dir_all;
+use std::{fs::remove_dir_all, path::PathBuf};
 
 /// OCD public command set CLI.
 #[derive(Debug, Clone, Parser)]
@@ -45,6 +45,7 @@ impl Ocd {
     pub async fn run(self) -> Result<()> {
         match self.command {
             Command::Clone(opts) => run_clone(opts).await,
+            Command::Init(opts) => run_init(opts),
             Command::Deploy(opts) => run_deploy(opts),
             Command::Undeploy(opts) => run_undeploy(opts),
         }
@@ -57,6 +58,10 @@ pub enum Command {
     /// Clone existing cluster.
     #[command(override_usage = "ocd clone [options] <url>")]
     Clone(CloneOptions),
+
+    /// Initialize new repository.
+    #[command(override_usage = "ocd init [options] <node_name>")]
+    Init(InitOptions),
 
     /// Deploy node of cluster.
     #[command(override_usage = "ocd deploy [options] [pattern]...")]
@@ -78,6 +83,27 @@ pub struct CloneOptions {
     /// Number of threads to use per node clone.
     #[arg(short, long, value_name = "limit")]
     pub jobs: Option<usize>,
+}
+
+/// Initialize new repository.
+#[derive(Parser, Clone, Debug)]
+#[command(author, about, long_about)]
+pub struct InitOptions {
+    /// Name of new repository to initialize.
+    #[arg(group = "entry", value_name = "node_name")]
+    pub node_name: Option<String>,
+
+    /// Mark repository as root of cluster.
+    #[arg(groups = ["entry", "kind"], short, long)]
+    pub root: bool,
+
+    /// Mark directory as worktree-alias (makes node repositories bare-alias).
+    #[arg(group = "node", short, long, value_name = "dir_path")]
+    pub dir_alias: Option<PathBuf>,
+
+    /// Mark node repository as bare-alias, and default worktree-alias to $HOME.
+    #[arg(groups = ["node", "kind"], short = 'H', long)]
+    pub home_alias: bool,
 }
 
 /// Deploy node of cluster.
@@ -128,6 +154,40 @@ async fn run_clone(opts: CloneOptions) -> Result<()> {
     let cluster = read_to_config::<Cluster>(config_dir()?.join("cluster.toml"))?;
     let multi_clone = MultiNodeClone::new(&cluster, opts.jobs)?;
     multi_clone.clone_all().await?;
+
+    Ok(())
+}
+
+pub fn run_init(opts: InitOptions) -> Result<()> {
+    let mut cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+
+    if opts.root {
+        let _ = Root::new_init()?;
+    } else {
+        // INVARIANT: Make sure root always exists.
+        if !data_dir()?.join("root").exists() {
+            let _ = Root::new_init()?;
+        }
+
+        let deployment = if opts.home_alias {
+            DeploymentKind::BareAlias(DirAlias::new(home_dir()?))
+        } else if opts.dir_alias.is_some() {
+            DeploymentKind::BareAlias(DirAlias::new(opts.dir_alias.unwrap()))
+        } else {
+            DeploymentKind::Normal
+        };
+
+        let node = NodeEntry {
+            deployment,
+            ..Default::default()
+        };
+        let name = opts.node_name.as_ref().ok_or(Error::NoNodeName)?;
+        let _ = Node::new_init(name, &node)?;
+
+        cluster.add_node(name, node)?;
+    }
+
+    write_to_config(config_dir()?.join("cluster.toml"), cluster.to_string())?;
 
     Ok(())
 }

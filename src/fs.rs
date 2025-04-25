@@ -8,7 +8,11 @@
 
 use crate::{Error, Result};
 
-use std::{fs::{OpenOptions, read_to_string}, io::Write, path::Path};
+use std::{
+    fs::{read_to_string, OpenOptions},
+    io::Write,
+    path::Path,
+};
 
 /// Read configuration file and deserialize to target type.
 ///

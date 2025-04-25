@@ -19,7 +19,9 @@ use crate::{
 
 use auth_git2::{GitAuthenticator, Prompter};
 use futures::{stream, StreamExt};
-use git2::{build::RepoBuilder, Config, FetchOptions, RemoteCallbacks, Repository, RepositoryInitOptions};
+use git2::{
+    build::RepoBuilder, Config, FetchOptions, RemoteCallbacks, Repository, RepositoryInitOptions,
+};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use inquire::{Password, Text};
 use std::{
@@ -144,7 +146,9 @@ impl Node {
     /// # Errors
     ///
     /// - Return [`Error::Git2`] if repository could not be initialized.
+    #[instrument(skip(name, node))]
     pub fn new_init(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
+        info!("Initialize node repository {:?}", name.as_ref());
         let repo = Git::builder(data_dir()?.join(name.as_ref()))
             .kind(node.deployment.clone())
             .url(&node.url)
