@@ -5,6 +5,16 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.4.0] - 2025-04-24
+
+### Added
+
+- Implement OCD init command.
+- Add `crate::fs::write_to_config` to write serialized configuration data to
+  external file.
+- Add `Node::new_init` to initialize new node in repository store.
+- Add `Root::new_init` to initialize new root in repository store.
+
 ## [0.3.0] - 2025-04-23
 
 ### Added
@@ -78,6 +88,7 @@ SPDX-License-Identifier: MIT
 - Add CC0-1.0 license.
 - Add MIT license.
 
+[0.4.0]: https://github.com/awkless/ocd/tag/v0.4.0
 [0.3.0]: https://github.com/awkless/ocd/tag/v0.3.0
 [0.2.0]: https://github.com/awkless/ocd/tag/v0.2.0
 [0.1.0]: https://github.com/awkless/ocd/tag/v0.1.0
