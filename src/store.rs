@@ -110,6 +110,15 @@ impl Root {
         Ok(root)
     }
 
+    /// Get current name of branch.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if HEAD is not pointing to a named branch.
+    pub fn current_branch(&self) -> Result<String> {
+        self.0.current_branch()
+    }
+
     /// Dpeloy root repository.
     ///
     /// Will warn if user tries to undeploy the root repository, and will warn if the user tries to
@@ -219,6 +228,20 @@ impl Node {
     /// Path to node repository.
     pub fn path(&self) -> &Path {
         self.0.path()
+    }
+
+    /// Name of node repository.
+    pub fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    /// Get current name of branch.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if HEAD is not pointing to a named branch.
+    pub fn current_branch(&self) -> Result<String> {
+        self.0.current_branch()
     }
 
     /// Deploy node repository.
@@ -441,6 +464,20 @@ impl Git {
         }
 
         Ok(true)
+    }
+
+    /// Get current name of branch.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if HEAD is not pointing to a named branch.
+    pub fn current_branch(&self) -> Result<String> {
+        self.repository
+            .head()
+            .map_err(Error::from)?
+            .shorthand()
+            .map(Into::into)
+            .ok_or(Error::Git2UnknownBranch { repo: self.name().into() })
     }
 
     /// Extract string data from target file in index.

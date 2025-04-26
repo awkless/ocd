@@ -96,6 +96,9 @@ pub enum Error {
     #[error("Cannot find file {file:?} in index of {repo:?}")]
     Git2FileNotFound { repo: String, file: String },
 
+    #[error("Cannot determine current branch of {repo:?}")]
+    Git2UnknownBranch { repo: String },
+
     #[error(transparent)]
     ProgressStyle(#[from] indicatif::style::TemplateError),
 
@@ -123,6 +126,7 @@ impl From<Error> for i32 {
             Error::SyscallInteractive { .. } => exitcode::OSERR,
             Error::Git2(..) => exitcode::SOFTWARE,
             Error::Git2FileNotFound { .. } => exitcode::SOFTWARE,
+            Error::Git2UnknownBranch { .. } => exitcode::SOFTWARE,
             Error::ProgressStyle(..) => exitcode::SOFTWARE,
             Error::Inquire(..) => exitcode::SOFTWARE,
             Error::NoNodeName => exitcode::USAGE,
