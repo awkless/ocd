@@ -193,6 +193,28 @@ impl Root {
 pub struct Node(Git);
 
 impl Node {
+    /// Clone node repository into repository store.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for any failure internal repository failure.
+    /// - Return [`Error::Git2FileNotFound`] if cluster definition does not exist in root.
+    /// - Return [`Error::SyscallInteractive`] for deployment failure.
+    /// - Return [`Error::Io`] for failed writes to sparse checkout file.
+    pub fn new_clone(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
+        let bar = ProgressBar::no_length();
+        let repo = Git::builder(data_dir()?.join(name.as_ref()))
+            .url(&node.url)
+            .kind(node.deployment.clone())
+            .excluded(node.excluded.iter().flatten())
+            .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
+                bar.clone(),
+            )))
+            .clone(&bar)?;
+
+        Ok(Self(repo))
+    }
+
     /// Initialize new node repository in repository store.
     ///
     /// # Errors
