@@ -227,6 +227,7 @@ pub fn run_init(opts: InitOptions) -> Result<()> {
     Ok(())
 }
 
+#[instrument(skip(opts))]
 pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
     let root = Root::new_open()?;
     let cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
@@ -250,11 +251,21 @@ pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
     for target in &targets {
         if opts.only {
             let entry = cluster.get_node(target)?;
-            let node = Node::new_open(target, entry)?;
+            let node = if data_dir()?.join(target).exists() {
+                Node::new_open(target, entry)?
+            } else {
+                warn!("Node {target:?} does not exist in repository store, cloning it");
+                Node::new_clone(target, entry)?
+            };
             node.deploy(action)?;
         } else {
             for (name, entry) in cluster.dependency_iter(target) {
-                let node = Node::new_open(name, entry)?;
+                let node = if data_dir()?.join(target).exists() {
+                    Node::new_open(name, entry)?
+                } else {
+                    warn!("Node {name:?} does not exist in repository store, cloning it");
+                    Node::new_clone(name, entry)?
+                };
                 node.deploy(action)?;
             }
         }
