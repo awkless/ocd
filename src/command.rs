@@ -10,7 +10,7 @@ use crate::{
     fs::{read_to_config, write_to_config},
     model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
     path::{config_dir, data_dir, home_dir},
-    store::{DeployAction, MultiNodeClone, Node, Root},
+    store::{DeployAction, MultiNodeClone, Node, Root, TablizeCluster},
     utils::glob_match,
     Error, Result,
 };
@@ -51,6 +51,7 @@ impl Ocd {
             Command::Deploy(opts) => run_deploy(opts),
             Command::Undeploy(opts) => run_undeploy(opts),
             Command::Remove(opts) => run_remove(opts),
+            Command::List(opts) => run_list(opts),
             Command::Git(opts) => run_git(opts),
         }
     }
@@ -78,6 +79,10 @@ pub enum Command {
     /// Remove target node from cluster.
     #[command(name = "rm", override_usage = "ocd rm [options] [pattern]...")]
     Remove(RemoveOptions),
+
+    /// List current entries in cluster.
+    #[command(name = "ls", override_usage = "ocd list [options]")]
+    List(ListOptions),
 
     /// Git binary shortcut.
     #[command(external_subcommand)]
@@ -159,6 +164,15 @@ pub struct RemoveOptions {
     /// List of nodes to remove ("root" will nuke cluster).
     #[arg(value_parser, num_args = 1.., value_delimiter = ',', value_name = "pattern")]
     pub patterns: Vec<String>,
+}
+
+/// List current entries in cluster.
+#[derive(Parser, Clone, Debug)]
+#[command(author, about, long_about)]
+pub struct ListOptions {
+    /// Only list names of each entry only.
+    #[arg(short, long)]
+    pub names_only: bool,
 }
 
 async fn run_clone(opts: CloneOptions) -> Result<()> {
@@ -314,6 +328,21 @@ fn run_remove(mut opts: RemoveOptions) -> Result<()> {
     }
 
     write_to_config(config_dir()?.join("cluster.toml"), cluster.to_string())?;
+
+    Ok(())
+}
+
+#[instrument(skip(opts))]
+fn run_list(opts: ListOptions) -> Result<()> {
+    let root = Root::new_open()?;
+    let cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+
+    let tablize = TablizeCluster::new(&root, &cluster);
+    if opts.names_only {
+        tablize.names_only()?;
+    } else {
+        tablize.fancy()?;
+    }
 
     Ok(())
 }
