@@ -5,6 +5,24 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.6.1] - 2025-04-25
+
+### Added
+
+- Add `crate::store::Node::new_clone` to clone node repository from node entry.
+
+### Changed
+
+- Add installation instructions to `README.md` file.
+- Add usage examples and instructions to `README.md` file.
+
+### Fixed
+
+- Deploy command will now try to clone missing node repositories instead of
+  failing to open missing node repositories.
+- Undeploy command will now try to clone missing node repositories instead of
+  failing to open missing node repositories.
+
 ## [0.6.0] - 2025-04-25
 
 ### Added
@@ -117,6 +135,7 @@ SPDX-License-Identifier: MIT
 - Add CC0-1.0 license.
 - Add MIT license.
 
+[0.6.1]: https://github.com/awkless/ocd/tag/v0.6.1
 [0.6.0]: https://github.com/awkless/ocd/tag/v0.6.0
 [0.5.0]: https://github.com/awkless/ocd/tag/v0.5.0
 [0.4.0]: https://github.com/awkless/ocd/tag/v0.4.0
