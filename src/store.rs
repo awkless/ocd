@@ -357,6 +357,108 @@ impl MultiNodeClone {
     }
 }
 
+/// Tablize repository entry information in cluster.
+pub struct TablizeCluster<'cluster> {
+    root: &'cluster Root,
+    cluster: &'cluster Cluster,
+}
+
+impl<'cluster> TablizeCluster<'cluster> {
+    /// Construct new cluster tablizer.
+    pub fn new(root: &'cluster Root, cluster: &'cluster Cluster) -> Self {
+        Self { root, cluster }
+    }
+
+    /// List only names of all entries in cluster.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if a given root or node entry does not exist.
+    pub fn names_only(&self) -> Result<()> {
+        let mut builder = tabled::builder::Builder::new();
+        builder.push_record(["<root>"]);
+
+        // INVARIANT: All node entries must be sorted by name.
+        let mut nodes: Vec<Node> = self
+            .cluster
+            .nodes
+            .iter()
+            .map(|(name, node)| Node::new_open(name, node))
+            .collect::<Result<Vec<_>>>()?;
+        nodes.sort_by(|a, b| a.name().cmp(b.name()));
+
+        for node in &nodes {
+            builder.push_record([node.name()]);
+        }
+
+        let mut table = builder.build();
+        table.with(tabled::settings::Style::ascii_rounded());
+        info!("Name only listing:\n{table}");
+
+        Ok(())
+    }
+
+    /// List a wide range information about each entry in cluster.
+    ///
+    /// Will list the following information:
+    ///
+    /// - Deployment kind.
+    /// - Entry name.
+    /// - Deployment status.
+    /// - Currently active branch.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if a given root or node entry does not exist.
+    /// - Will fail if deployment status cannot be obtained.
+    /// - Will fail if current branch cannot be obtained.
+    #[instrument(skip(self))]
+    pub fn fancy(&self) -> Result<()> {
+        let mut builder = tabled::builder::Builder::new();
+        let state = if self.root.0.is_deployed(DeployState::WithExcluded)? {
+            "deployed fully"
+        } else {
+            "deployed"
+        };
+        builder.push_record([
+            "bare-alias",
+            "<root>",
+            state,
+            self.root.current_branch()?.as_str(),
+        ]);
+
+        // INVARIANT: All node entries must be sorted by name.
+        let mut nodes: Vec<Node> = self
+            .cluster
+            .nodes
+            .iter()
+            .map(|(name, node)| Node::new_open(name, node))
+            .collect::<Result<Vec<_>>>()?;
+        nodes.sort_by(|a, b| a.name().cmp(b.name()));
+
+        for node in &nodes {
+            let (deploy, state) = if node.0.is_bare() {
+                if node.0.is_deployed(DeployState::WithExcluded)? {
+                    ("bare-alias", "deployed fully")
+                } else if node.0.is_deployed(DeployState::WithoutExcluded)? {
+                    ("bare-alias", "deployed")
+                } else {
+                    ("bare-alias", "undeployed")
+                }
+            } else {
+                ("[node:normal]", "undeployable")
+            };
+            builder.push_record([deploy, node.name(), state, node.current_branch()?.as_str()]);
+        }
+
+        let mut table = builder.build();
+        table.with(tabled::settings::Style::ascii_rounded());
+        info!("Fancy listing:\n{table}");
+
+        Ok(())
+    }
+}
+
 /// Git repository manager.
 ///
 /// Wraps a Git repository to provide important functionality regarding the management, deployment,
@@ -471,13 +573,15 @@ impl Git {
     /// # Errors
     ///
     /// - Will fail if HEAD is not pointing to a named branch.
-    pub fn current_branch(&self) -> Result<String> {
+    pub(crate) fn current_branch(&self) -> Result<String> {
         self.repository
             .head()
             .map_err(Error::from)?
             .shorthand()
             .map(Into::into)
-            .ok_or(Error::Git2UnknownBranch { repo: self.name().into() })
+            .ok_or(Error::Git2UnknownBranch {
+                repo: self.name().into(),
+            })
     }
 
     /// Extract string data from target file in index.
