@@ -41,14 +41,14 @@
 
 #![allow(dead_code)]
 
-pub(crate) mod command;
+pub(crate) mod cmd;
 pub(crate) mod fs;
 pub(crate) mod model;
 pub(crate) mod store;
 pub(crate) mod utils;
 
 #[doc(hidden)]
-pub use command::Ocd;
+pub use cmd::Ocd;
 
 #[cfg(test)]
 mod tests;
