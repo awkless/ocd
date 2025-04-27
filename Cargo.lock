@@ -933,6 +933,7 @@ dependencies = [
  "sealed_test",
  "shellexpand",
  "simple_test_case",
+ "simple_txtar",
  "tabled",
  "thiserror",
  "tokio",
@@ -1310,6 +1311,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "simple_txtar"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "373fac8aec0b1d99f0915cb639ce66f615a8f4f67e237c39058bc38e1fa89a62"
 
 [[package]]
 name = "slab"
