@@ -390,3 +390,15 @@ fn run_git(opts: Vec<OsString>) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use clap::CommandFactory;
+
+    #[test]
+    fn cli_verify_structure() {
+        Ocd::command().debug_assert();
+    }
+}
