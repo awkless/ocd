@@ -260,7 +260,7 @@ pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
             node.deploy(action)?;
         } else {
             for (name, entry) in cluster.dependency_iter(target) {
-                let node = if data_dir()?.join(target).exists() {
+                let node = if data_dir()?.join(name).exists() {
                     Node::new_open(name, entry)?
                 } else {
                     warn!("Node {name:?} does not exist in repository store, cloning it");
@@ -306,7 +306,7 @@ fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
             node.deploy(action)?;
         } else {
             for (name, entry) in cluster.dependency_iter(target) {
-                let node = if data_dir()?.join(target).exists() {
+                let node = if data_dir()?.join(name).exists() {
                     Node::new_open(name, entry)?
                 } else {
                     warn!("Node {name:?} does not exist in repository store, cloning it");
