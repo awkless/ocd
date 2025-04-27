@@ -51,6 +51,9 @@ pub(crate) mod utils;
 #[doc(hidden)]
 pub use command::Ocd;
 
+#[cfg(test)]
+mod tests;
+
 /// All possible error variants that OCD can encounter during runtime.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
