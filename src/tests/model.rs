@@ -633,10 +633,7 @@ fn smoke_cluster_remove_node(
     "no path"
 )]
 #[test]
-fn smoke_cluster_dependency_iter(
-    config: &str,
-    mut expect: Vec<(&str, NodeEntry)>,
-) -> Result<()> {
+fn smoke_cluster_dependency_iter(config: &str, mut expect: Vec<(&str, NodeEntry)>) -> Result<()> {
     let cluster: Cluster = config.parse()?;
     let mut result: Vec<(&str, NodeEntry)> = cluster
         .dependency_iter("bash")

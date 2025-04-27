@@ -7,7 +7,7 @@
 //! [`Cluster`] type is provided as a format preserving cluster definition parser.
 
 use crate::{
-    path::{config_dir, home_dir},
+    fs::{config_dir, home_dir},
     Error, Result,
 };
 

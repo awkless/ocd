@@ -11,8 +11,8 @@
 //! repository store at the bottom.
 
 use crate::{
+    fs::{config_dir, data_dir},
     model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
-    path::{config_dir, data_dir},
     utils::{glob_match, syscall_interactive, syscall_non_interactive},
     Error, Result,
 };

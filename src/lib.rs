@@ -44,7 +44,6 @@
 pub(crate) mod command;
 pub(crate) mod fs;
 pub(crate) mod model;
-pub(crate) mod path;
 pub(crate) mod store;
 pub(crate) mod utils;
 

@@ -7,9 +7,8 @@
 //! the OCD binary. The entire OCD command set is implemented right there!.
 
 use crate::{
-    fs::{read_to_config, write_to_config},
+    fs::{config_dir, data_dir, home_dir, load, write_to_config, Existence},
     model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
-    path::{config_dir, data_dir, home_dir},
     store::{DeployAction, MultiNodeClone, Node, Root, TablizeCluster},
     utils::glob_match,
     Error, Result,
@@ -186,7 +185,7 @@ async fn run_clone(opts: CloneOptions) -> Result<()> {
         }
     };
 
-    let cluster = read_to_config::<Cluster>(config_dir()?.join("cluster.toml"))?;
+    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
     let multi_clone = MultiNodeClone::new(&cluster, opts.jobs)?;
     multi_clone.clone_all().await?;
 
@@ -194,7 +193,7 @@ async fn run_clone(opts: CloneOptions) -> Result<()> {
 }
 
 pub fn run_init(opts: InitOptions) -> Result<()> {
-    let mut cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+    let mut cluster: Cluster = load("cluster.toml", Existence::Required)?;
 
     if opts.root {
         let _ = Root::new_init()?;
@@ -230,7 +229,7 @@ pub fn run_init(opts: InitOptions) -> Result<()> {
 #[instrument(skip(opts))]
 pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
     let root = Root::new_open()?;
-    let cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
     let action = if opts.with_excluded {
         DeployAction::DeployAll
     } else {
@@ -276,7 +275,7 @@ pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
 
 fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
     let root = Root::new_open()?;
-    let cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
     let action = if opts.excluded_only {
         DeployAction::UndeployExcludes
     } else {
@@ -322,7 +321,7 @@ fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
 
 #[instrument(skip(opts))]
 fn run_remove(mut opts: RemoveOptions) -> Result<()> {
-    let mut cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+    let mut cluster: Cluster = load("cluster.toml", Existence::Required)?;
 
     opts.patterns.dedup();
     for pattern in &mut opts.patterns {
@@ -356,7 +355,7 @@ fn run_remove(mut opts: RemoveOptions) -> Result<()> {
 #[instrument(skip(opts))]
 fn run_list(opts: ListOptions) -> Result<()> {
     let root = Root::new_open()?;
-    let cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
 
     let tablize = TablizeCluster::new(&root, &cluster);
     if opts.names_only {
@@ -369,7 +368,7 @@ fn run_list(opts: ListOptions) -> Result<()> {
 }
 
 fn run_git(opts: Vec<OsString>) -> Result<()> {
-    let cluster: Cluster = read_to_config(config_dir()?.join("cluster.toml"))?;
+    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
     let mut patterns = opts[0].to_string_lossy().into_owned();
     patterns.retain(|c| !c.is_whitespace());
     let mut patterns: Vec<&str> = patterns.split(',').collect();
