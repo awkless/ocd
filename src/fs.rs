@@ -11,7 +11,6 @@ use crate::{Error, Result};
 use std::{
     fs::{create_dir_all, read_to_string, OpenOptions},
     io::Write,
-    path::Path,
     path::PathBuf,
 };
 use tracing::{debug, info, instrument};
@@ -49,8 +48,7 @@ where
                 }
             } else {
                 Err(err)
-            }
-        }
+            } }
     }?;
 
     data.parse::<C>()
@@ -75,16 +73,25 @@ pub enum Existence {
 /// # Errors
 ///
 /// - Return `Error::Io` if file cannot be created or written to.
-pub fn write_to_config<C, P>(path: P, config: C) -> Result<()>
+#[instrument(skip(filename, config), level = "debug")]
+pub fn save<C>(filename: impl AsRef<str>, config: C) -> Result<()>
 where
     C: std::fmt::Display,
-    P: AsRef<Path>,
 {
+    let config_dir = config_dir()?;
+    if !config_dir.exists() {
+        info!("create configuration directory at {config_dir:?}");
+        create_dir_all(&config_dir)?;
+    }
+
+    let path = config_dir.join(filename.as_ref());
+    debug!("Save configuration file {path:?}");
+
     OpenOptions::new()
         .write(true)
         .truncate(true)
         .create(true)
-        .open(path.as_ref())?
+        .open(path)?
         .write_all(config.to_string().as_bytes())
         .map_err(Error::from)
 }

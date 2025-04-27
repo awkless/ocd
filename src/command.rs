@@ -7,7 +7,7 @@
 //! the OCD binary. The entire OCD command set is implemented right there!.
 
 use crate::{
-    fs::{config_dir, data_dir, home_dir, load, write_to_config, Existence},
+    fs::{config_dir, data_dir, home_dir, load, save, Existence},
     model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
     store::{DeployAction, MultiNodeClone, Node, Root, TablizeCluster},
     utils::glob_match,
@@ -221,7 +221,7 @@ pub fn run_init(opts: InitOptions) -> Result<()> {
         cluster.add_node(name, node)?;
     }
 
-    write_to_config(config_dir()?.join("cluster.toml"), cluster.to_string())?;
+    save("cluster.toml", cluster.to_string())?;
 
     Ok(())
 }
@@ -347,7 +347,7 @@ fn run_remove(mut opts: RemoveOptions) -> Result<()> {
         remove_dir_all(repo.path())?;
     }
 
-    write_to_config(config_dir()?.join("cluster.toml"), cluster.to_string())?;
+    save("cluster.toml", cluster.to_string())?;
 
     Ok(())
 }
