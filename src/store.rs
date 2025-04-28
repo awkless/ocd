@@ -75,7 +75,7 @@ impl Root {
     /// # Errors
     ///
     /// - Return [`Git2`] if root repository could not be initialized.
-    #[instrument]
+    #[instrument(level = "debug")]
     pub fn new_init() -> Result<Self> {
         info!("Initialize root repository");
         let root = Git::builder(data_dir()?.join("root"))
@@ -93,7 +93,7 @@ impl Root {
     ///
     /// - Return [`Error::Git2`] if opening root repository failed.
     /// - Return [`Error::Git2FileNotFound`] if root somehow does not contain a cluster definition.
-    #[instrument]
+    #[instrument(level = "debug")]
     pub fn new_open() -> Result<Self> {
         let repo = Git::builder(data_dir()?.join("root")).open()?;
         let cluster: Cluster = repo.extract_file_data("cluster.toml")?.parse()?;
@@ -108,6 +108,15 @@ impl Root {
         }
 
         Ok(root)
+    }
+
+    /// Get path to root.
+    pub fn path(&self) -> &Path {
+        &self.0.path()
+    }
+
+    pub(crate) fn deployment_kind(&self) -> &DeploymentKind {
+        &self.0.kind
     }
 
     /// Get current name of branch.
@@ -154,7 +163,7 @@ impl Root {
     /// - Will fail if root or node cannot be undeployed.
     /// - Will fail if configuration directory cannot be deleted.
     /// - Will fail if data directory cannot be deleted.
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     pub fn nuke(&self) -> Result<()> {
         self.0.deploy(DeployAction::Undeploy)?;
 

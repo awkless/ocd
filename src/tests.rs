@@ -2,4 +2,5 @@
 // SPDX-License-Identifier: MIT
 
 mod model;
+mod store;
 mod utils;
