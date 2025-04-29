@@ -115,8 +115,8 @@ impl Root {
         &self.0.path()
     }
 
-    pub(crate) fn deployment_kind(&self) -> &DeploymentKind {
-        &self.0.kind
+    pub(crate) fn is_deployed(&self, state: DeployState) -> Result<bool> {
+        self.0.is_deployed(state)
     }
 
     /// Get current name of branch.

@@ -109,6 +109,9 @@ pub enum Error {
 
     #[error("Node not given a name")]
     NoNodeName,
+
+    #[error(transparent)]
+    RunScript(#[from] run_script::types::ScriptError),
 }
 
 impl From<Error> for i32 {
@@ -132,6 +135,7 @@ impl From<Error> for i32 {
             Error::ProgressStyle(..) => exitcode::SOFTWARE,
             Error::Inquire(..) => exitcode::SOFTWARE,
             Error::NoNodeName => exitcode::USAGE,
+            Error::RunScript(..) => exitcode::OSERR,
         }
     }
 }

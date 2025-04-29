@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+
+git --git-dir .local/share/ocd --work-dir .config/ocd checkout
+
+-- cluster.toml --
+excluded = ["LICENSE*", "README*"]
+
+-- LICENSE --
+Copy of license right here!
+
+-- README.txt --
+Introduce newcomers to root of cluster!

@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+
+-- cluster.toml --
+dir_alias = "$HOME"
+excluded = ["LICENSE*", "README*"]
+
+-- LICENSE --
+Copy of license right here!
+
+-- README.txt --
+Introduce newcomers to root of cluster!

@@ -48,7 +48,8 @@ where
                 }
             } else {
                 Err(err)
-            } }
+            }
+        }
     }?;
 
     data.parse::<C>()
@@ -101,8 +102,6 @@ where
 /// # Errors
 ///
 /// - Return [`Error::NoWayHome`] if path to home directory cannot be determined.
-///
-/// [`Error::NoWayHome`]: crate::Error::NoWayHome
 pub fn home_dir() -> Result<PathBuf> {
     dirs::home_dir().ok_or(Error::NoWayHome)
 }
@@ -112,8 +111,6 @@ pub fn home_dir() -> Result<PathBuf> {
 /// # Errors
 ///
 /// - Return [`Error::NoWayConfig`] if path to configuration directory cannot be determined.
-///
-/// [`Error::NoWayConfig`]: crate::Error::NoWayConfig
 pub fn config_dir() -> Result<PathBuf> {
     dirs::config_dir()
         .map(|path| path.join("ocd"))
@@ -125,8 +122,6 @@ pub fn config_dir() -> Result<PathBuf> {
 /// # Errors
 ///
 /// - Return [`Error::NoWayData`] if path to configuration directory cannot be determined.
-///
-/// [`Error::NoWayData`]: crate::Error::NoWayData
 pub fn data_dir() -> Result<PathBuf> {
     dirs::data_dir()
         .map(|path| path.join("ocd"))
