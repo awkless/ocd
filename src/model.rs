@@ -17,7 +17,7 @@ use std::{
     path::PathBuf,
 };
 use toml_edit::{Array, DocumentMut, InlineTable, Item, Key, Table, Value};
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 
 /// Format preserving cluster definition parser.
 ///
@@ -186,9 +186,6 @@ impl Cluster {
     }
 
     fn expand_dir_aliases(&mut self) -> Result<()> {
-        self.root.dir_alias =
-            DirAlias::new(shellexpand::full(&self.root.dir_alias.to_string())?.into_owned());
-
         for node in self.nodes.values_mut() {
             if let DeploymentKind::BareAlias(dir_alias) = &node.deployment {
                 node.deployment = DeploymentKind::BareAlias(DirAlias::new(
@@ -300,11 +297,22 @@ impl<'toml> TryFrom<&'toml Table> for RootEntry {
     fn try_from(table: &'toml Table) -> Result<Self, Self::Error> {
         let mut root = RootEntry::new();
 
-        let dir_alias = table
-            .get("dir_alias")
-            .and_then(|alias| alias.as_str().map(Into::into))
-            // INVARIANT: Default to configuration directory path if `None`.
-            .unwrap_or(config_dir()?);
+        let dir_alias = if let Some(entry) = table.get("dir_alias") {
+            if let Some(alias) = entry.as_str() {
+                if alias == "config_dir" {
+                    config_dir()?
+                } else if alias == "home_dir" {
+                    home_dir()?
+                } else {
+                    warn!("Invalid value {alias:?} for \"root.dir_alias\", using default");
+                    config_dir()?
+                }
+            } else {
+                config_dir()?
+            }
+        } else {
+            config_dir()?
+        };
         root.dir_alias = DirAlias::new(dir_alias);
 
         root.excluded = table.get("excluded").and_then(|rules| {

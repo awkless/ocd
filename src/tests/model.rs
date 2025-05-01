@@ -9,11 +9,11 @@ use simple_test_case::test_case;
 
 #[test_case(
     r#"
-        dir_alias = "some/path"
+        dir_alias = "home_dir"
         excluded = ["rule1", "rule2", "rule3"]
     "#,
     RootEntry {
-        dir_alias: DirAlias::new("some/path"),
+        dir_alias: DirAlias::new("home/user"),
         excluded: Some(vec!["rule1".into(), "rule2".into(), "rule3".into()]),
     };
     "full fields"
@@ -252,8 +252,6 @@ fn smoke_cluster_from_str_acyclic_check(config: &str, expect: Result<(), anyhow:
 #[sealed_test(env = [("CUSTOM_VAR", "some/path")])]
 fn smoke_cluster_from_str_expand_dir_aliases() -> Result<()> {
     let config = r#"
-        dir_alias = "$CUSTOM_VAR/ocd"
-
         [nodes.vim]
         deployment = { kind = "bare_alias", dir_alias = "$CUSTOM_VAR/vimrc" }
 
@@ -264,9 +262,6 @@ fn smoke_cluster_from_str_expand_dir_aliases() -> Result<()> {
         deployment = { kind = "bare_alias", dir_alias = "$CUSTOM_VAR/fish" }
     "#;
     let cluster: Cluster = config.parse()?;
-    let expect = RootEntry { dir_alias: DirAlias::new("some/path/ocd"), ..Default::default() };
-    pretty_assertions::assert_eq!(cluster.root, expect);
-
     let mut expect = vec![
         (
             "vim".to_string(),
