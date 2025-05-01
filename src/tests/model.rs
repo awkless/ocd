@@ -125,10 +125,7 @@ fn smoke_cluster_from_str_node_deserialize(
     mut expect: Vec<(String, NodeEntry)>,
 ) -> Result<()> {
     let cluster: Cluster = config.parse()?;
-    let mut result = cluster
-        .nodes
-        .into_iter()
-        .collect::<Vec<(String, NodeEntry)>>();
+    let mut result = cluster.nodes.into_iter().collect::<Vec<(String, NodeEntry)>>();
     result.sort_by(|(a, _), (b, _)| a.cmp(b));
     expect.sort_by(|(a, _), (b, _)| a.cmp(b));
     pretty_assertions::assert_eq!(result, expect);
@@ -267,10 +264,7 @@ fn smoke_cluster_from_str_expand_dir_aliases() -> Result<()> {
         deployment = { kind = "bare_alias", dir_alias = "$CUSTOM_VAR/fish" }
     "#;
     let cluster: Cluster = config.parse()?;
-    let expect = RootEntry {
-        dir_alias: DirAlias::new("some/path/ocd"),
-        ..Default::default()
-    };
+    let expect = RootEntry { dir_alias: DirAlias::new("some/path/ocd"), ..Default::default() };
     pretty_assertions::assert_eq!(cluster.root, expect);
 
     let mut expect = vec![
@@ -296,10 +290,7 @@ fn smoke_cluster_from_str_expand_dir_aliases() -> Result<()> {
             },
         ),
     ];
-    let mut result = cluster
-        .nodes
-        .into_iter()
-        .collect::<Vec<(String, NodeEntry)>>();
+    let mut result = cluster.nodes.into_iter().collect::<Vec<(String, NodeEntry)>>();
     result.sort_by(|(a, _), (b, _)| a.cmp(b));
     expect.sort_by(|(a, _), (b, _)| a.cmp(b));
     pretty_assertions::assert_eq!(result, expect);
@@ -635,10 +626,8 @@ fn smoke_cluster_remove_node(
 #[test]
 fn smoke_cluster_dependency_iter(config: &str, mut expect: Vec<(&str, NodeEntry)>) -> Result<()> {
     let cluster: Cluster = config.parse()?;
-    let mut result: Vec<(&str, NodeEntry)> = cluster
-        .dependency_iter("bash")
-        .map(|(name, node)| (name, node.clone()))
-        .collect();
+    let mut result: Vec<(&str, NodeEntry)> =
+        cluster.dependency_iter("bash").map(|(name, node)| (name, node.clone())).collect();
 
     result.sort_by(|(a, _), (b, _)| a.cmp(b));
     expect.sort_by(|(a, _), (b, _)| a.cmp(b));

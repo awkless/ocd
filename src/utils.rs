@@ -27,10 +27,7 @@ pub fn glob_match(
     patterns: impl IntoIterator<Item = impl Into<String>> + std::fmt::Debug,
     entries: impl IntoIterator<Item = impl Into<String>> + std::fmt::Debug,
 ) -> Vec<String> {
-    let patterns = patterns
-        .into_iter()
-        .map(Into::into)
-        .collect::<Vec<String>>();
+    let patterns = patterns.into_iter().map(Into::into).collect::<Vec<String>>();
     let entries = entries.into_iter().map(Into::into).collect::<Vec<String>>();
 
     let mut matched = Vec::new();

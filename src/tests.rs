@@ -7,7 +7,7 @@ mod utils;
 
 use crate::Result;
 
-use git2::{Repository, RepositoryInitOptions, IndexEntry, IndexTime};
+use git2::{IndexEntry, IndexTime, Repository, RepositoryInitOptions};
 use std::path::Path;
 
 /// Construct Git repository fixture.
@@ -61,7 +61,7 @@ impl GitFixture {
             id: self.repo.blob(contents.as_ref().as_bytes())?,
             flags: 0,
             flags_extended: 0,
-            path: filename.as_ref().as_os_str().to_string_lossy().into_owned().as_bytes().to_vec()
+            path: filename.as_ref().as_os_str().to_string_lossy().into_owned().as_bytes().to_vec(),
         };
 
         let mut index = self.repo.index()?;

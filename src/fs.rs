@@ -112,9 +112,7 @@ pub fn home_dir() -> Result<PathBuf> {
 ///
 /// - Return [`Error::NoWayConfig`] if path to configuration directory cannot be determined.
 pub fn config_dir() -> Result<PathBuf> {
-    dirs::config_dir()
-        .map(|path| path.join("ocd"))
-        .ok_or(Error::NoWayConfig)
+    dirs::config_dir().map(|path| path.join("ocd")).ok_or(Error::NoWayConfig)
 }
 
 /// Get absolute path to OCD's data directory.
@@ -123,7 +121,5 @@ pub fn config_dir() -> Result<PathBuf> {
 ///
 /// - Return [`Error::NoWayData`] if path to configuration directory cannot be determined.
 pub fn data_dir() -> Result<PathBuf> {
-    dirs::data_dir()
-        .map(|path| path.join("ocd"))
-        .ok_or(Error::NoWayData)
+    dirs::data_dir().map(|path| path.join("ocd")).ok_or(Error::NoWayData)
 }

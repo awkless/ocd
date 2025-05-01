@@ -211,10 +211,7 @@ pub fn run_init(opts: InitOptions) -> Result<()> {
             DeploymentKind::Normal
         };
 
-        let node = NodeEntry {
-            deployment,
-            ..Default::default()
-        };
+        let node = NodeEntry { deployment, ..Default::default() };
         let name = opts.node_name.as_ref().ok_or(Error::NoNodeName)?;
         let _ = Node::new_init(name, &node)?;
 
@@ -230,11 +227,7 @@ pub fn run_init(opts: InitOptions) -> Result<()> {
 pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
     let root = Root::new_open()?;
     let cluster: Cluster = load("cluster.toml", Existence::Required)?;
-    let action = if opts.with_excluded {
-        DeployAction::DeployAll
-    } else {
-        DeployAction::Deploy
-    };
+    let action = if opts.with_excluded { DeployAction::DeployAll } else { DeployAction::Deploy };
 
     opts.patterns.dedup();
     for pattern in &mut opts.patterns {
@@ -276,11 +269,8 @@ pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
 fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
     let root = Root::new_open()?;
     let cluster: Cluster = load("cluster.toml", Existence::Required)?;
-    let action = if opts.excluded_only {
-        DeployAction::UndeployExcludes
-    } else {
-        DeployAction::Undeploy
-    };
+    let action =
+        if opts.excluded_only { DeployAction::UndeployExcludes } else { DeployAction::Undeploy };
 
     opts.patterns.dedup();
     for pattern in &mut opts.patterns {

@@ -9,18 +9,9 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
 async fn main() {
-    let layer = fmt::layer()
-        .compact()
-        .with_target(false)
-        .with_timer(false)
-        .without_time();
-    let filter = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))
-        .unwrap();
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(layer)
-        .init();
+    let layer = fmt::layer().compact().with_target(false).with_timer(false).without_time();
+    let filter = EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("info")).unwrap();
+    tracing_subscriber::registry().with(filter).with(layer).init();
 
     if let Err(error) = run().await {
         tracing::error!("{error:?}");

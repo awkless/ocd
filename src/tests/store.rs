@@ -7,8 +7,8 @@ use crate::{
     Result,
 };
 
-use sealed_test::prelude::*;
 use run_script::run_script;
+use sealed_test::prelude::*;
 use simple_test_case::dir_cases;
 use simple_txtar::Archive;
 

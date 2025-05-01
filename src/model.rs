@@ -53,9 +53,7 @@ impl Cluster {
     ///
     /// - Return [`Error::EntryNotFound`] if node does not exist in cluster definition.
     pub fn get_node(&self, name: impl AsRef<str>) -> Result<&NodeEntry> {
-        self.nodes.get(name.as_ref()).ok_or(Error::EntryNotFound {
-            name: name.as_ref().into(),
-        })
+        self.nodes.get(name.as_ref()).ok_or(Error::EntryNotFound { name: name.as_ref().into() })
     }
 
     /// Add node entry into cluster definition.
@@ -75,9 +73,7 @@ impl Cluster {
     ) -> Result<Option<NodeEntry>> {
         let (key, item) = node.to_toml(name.as_ref());
         let table = if let Some(item) = self.document.get_mut("nodes") {
-            item.as_table_mut().ok_or(Error::EntryNotTable {
-                name: "nodes".into(),
-            })?
+            item.as_table_mut().ok_or(Error::EntryNotTable { name: "nodes".into() })?
         } else {
             // INVARIANT: Construct new "nodes" table to insert node entry into.
             let mut new_table = Table::new();
@@ -105,19 +101,11 @@ impl Cluster {
         self.document
             .get_mut("nodes")
             .and_then(|item| item.as_table_mut())
-            .ok_or(Error::EntryNotFound {
-                name: "nodes".into(),
-            })?
+            .ok_or(Error::EntryNotFound { name: "nodes".into() })?
             .remove(node.as_ref())
-            .ok_or(Error::EntryNotFound {
-                name: node.as_ref().into(),
-            })?;
+            .ok_or(Error::EntryNotFound { name: node.as_ref().into() })?;
 
-        self.nodes
-            .remove(node.as_ref())
-            .ok_or(Error::EntryNotFound {
-                name: node.as_ref().into(),
-            })
+        self.nodes.remove(node.as_ref()).ok_or(Error::EntryNotFound { name: node.as_ref().into() })
     }
 
     /// Iterate through all dependencies of a target node entry.
@@ -126,11 +114,7 @@ impl Cluster {
     pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
         let mut stack = VecDeque::new();
         stack.push_front(node.into());
-        DependencyIter {
-            graph: &self.nodes,
-            visited: HashSet::new(),
-            stack,
-        }
+        DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
     }
 
     fn dependency_existence_check(&self) -> Result<()> {
@@ -138,9 +122,7 @@ impl Cluster {
         for node in self.nodes.values() {
             for dependency in node.dependencies.iter().flatten() {
                 if !self.nodes.contains_key(dependency) {
-                    results.push(Err(Error::DependencyNotFound {
-                        name: dependency.clone(),
-                    }));
+                    results.push(Err(Error::DependencyNotFound { name: dependency.clone() }));
                 } else {
                     results.push(Ok(()));
                 }
@@ -191,12 +173,8 @@ impl Cluster {
         //   - There exists a cycle.
         //   - The unvisited nodes represent this cycle.
         if visited.len() != self.nodes.len() {
-            let cycle: Vec<String> = self
-                .nodes
-                .keys()
-                .filter(|key| !visited.contains(*key))
-                .cloned()
-                .collect();
+            let cycle: Vec<String> =
+                self.nodes.keys().filter(|key| !visited.contains(*key)).cloned().collect();
 
             // TODO: Pretty print structure of cycle, besides printing names of problematic nodes.
             return Err(Error::CircularDependencies { cycle });
@@ -245,11 +223,7 @@ impl std::str::FromStr for Cluster {
             HashMap::new()
         };
 
-        let mut cluster = Self {
-            root,
-            nodes,
-            document,
-        };
+        let mut cluster = Self { root, nodes, document };
         cluster.dependency_existence_check()?;
         cluster.acyclic_check()?;
         cluster.expand_dir_aliases()?;
@@ -335,9 +309,7 @@ impl<'toml> TryFrom<&'toml Table> for RootEntry {
 
         root.excluded = table.get("excluded").and_then(|rules| {
             rules.as_array().map(|arr| {
-                arr.into_iter()
-                    .map(|rule| rule.as_str().unwrap_or_default().into())
-                    .collect()
+                arr.into_iter().map(|rule| rule.as_str().unwrap_or_default().into()).collect()
             })
         });
 
@@ -389,17 +361,11 @@ impl NodeEntry {
         node.insert("url", Item::Value(Value::from(&self.url)));
 
         if let Some(excluded) = &self.excluded {
-            node.insert(
-                "excluded",
-                Item::Value(Value::Array(Array::from_iter(excluded))),
-            );
+            node.insert("excluded", Item::Value(Value::Array(Array::from_iter(excluded))));
         }
 
         if let Some(dependencies) = &self.dependencies {
-            node.insert(
-                "dependencies",
-                Item::Value(Value::Array(Array::from_iter(dependencies))),
-            );
+            node.insert("dependencies", Item::Value(Value::Array(Array::from_iter(dependencies))));
         }
 
         let key = Key::new(name.as_ref());
@@ -434,10 +400,8 @@ impl<'toml> TryFrom<&'toml Item> for NodeEntry {
             //     as the default for `DeploymentKind::BareAlias(..)`.
             //   - Default to `DeploymentKind::default` for any other `&str`.
             } else {
-                let kind = deployment
-                    .get("kind")
-                    .and_then(|kind| kind.as_str())
-                    .unwrap_or_default();
+                let kind =
+                    deployment.get("kind").and_then(|kind| kind.as_str()).unwrap_or_default();
                 let alias = deployment
                     .get("dir_alias")
                     .and_then(|alias| alias.as_str().map(Into::into))
@@ -453,24 +417,17 @@ impl<'toml> TryFrom<&'toml Item> for NodeEntry {
             DeploymentKind::default()
         };
 
-        node.url = item
-            .get("url")
-            .and_then(|url| url.as_str().map(Into::into))
-            .unwrap_or_default();
+        node.url = item.get("url").and_then(|url| url.as_str().map(Into::into)).unwrap_or_default();
 
         node.excluded = item.get("excluded").and_then(|rules| {
             rules.as_array().map(|arr| {
-                arr.into_iter()
-                    .map(|rule| rule.as_str().unwrap_or_default().into())
-                    .collect()
+                arr.into_iter().map(|rule| rule.as_str().unwrap_or_default().into()).collect()
             })
         });
 
         node.dependencies = item.get("dependencies").and_then(|deps| {
             deps.as_array().map(|arr| {
-                arr.into_iter()
-                    .map(|dep| dep.as_str().unwrap_or_default().into())
-                    .collect()
+                arr.into_iter().map(|dep| dep.as_str().unwrap_or_default().into()).collect()
             })
         });
 

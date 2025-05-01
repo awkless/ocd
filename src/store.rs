@@ -55,15 +55,12 @@ impl Root {
         let repo = Git::builder(data_dir()?.join("root"))
             .url(url.as_ref())
             .kind(DeploymentKind::BareAlias(DirAlias::default()))
-            .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
-                bar.clone(),
-            )))
+            .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
             .clone(&bar)?;
 
         let cluster: Cluster = repo.extract_file_data("cluster.toml")?.parse()?;
         let mut root = Self(repo);
-        root.0
-            .set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias));
+        root.0.set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias));
         root.0.set_excluded(cluster.root.excluded.iter().flatten());
         root.0.deploy(DeployAction::Deploy)?;
 
@@ -98,8 +95,7 @@ impl Root {
         let repo = Git::builder(data_dir()?.join("root")).open()?;
         let cluster: Cluster = repo.extract_file_data("cluster.toml")?.parse()?;
         let mut root = Self(repo);
-        root.0
-            .set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
+        root.0.set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
         root.0.set_excluded(cluster.root.excluded.iter().flatten());
 
         if !root.0.is_deployed(DeployState::WithoutExcluded)? {
@@ -216,9 +212,7 @@ impl Node {
             .url(&node.url)
             .kind(node.deployment.clone())
             .excluded(node.excluded.iter().flatten())
-            .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
-                bar.clone(),
-            )))
+            .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
             .clone(&bar)?;
 
         Ok(Self(repo))
@@ -327,11 +321,7 @@ impl MultiNodeClone {
             nodes.push(repo);
         }
 
-        Ok(Self {
-            nodes,
-            multi_bar,
-            jobs,
-        })
+        Ok(Self { nodes, multi_bar, jobs })
     }
 
     /// Clone all node entries in cluster asynchronously.
@@ -379,10 +369,7 @@ impl MultiNodeClone {
 
         // TODO: Report all failures instead of the first occurance of a failure.
         let results = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
-        let _ = results
-            .into_iter()
-            .flatten()
-            .collect::<Result<Vec<_>, _>>()?;
+        let _ = results.into_iter().flatten().collect::<Result<Vec<_>, _>>()?;
 
         Ok(())
     }
@@ -451,12 +438,7 @@ impl<'cluster> TablizeCluster<'cluster> {
         } else {
             "deployed"
         };
-        builder.push_record([
-            "bare-alias",
-            "<root>",
-            state,
-            self.root.current_branch()?.as_str(),
-        ]);
+        builder.push_record(["bare-alias", "<root>", state, self.root.current_branch()?.as_str()]);
 
         // INVARIANT: All node entries must be sorted by name.
         let mut nodes: Vec<Node> = self
@@ -610,9 +592,7 @@ impl Git {
             .map_err(Error::from)?
             .shorthand()
             .map(Into::into)
-            .ok_or(Error::Git2UnknownBranch {
-                repo: self.name().into(),
-            })
+            .ok_or(Error::Git2UnknownBranch { repo: self.name().into() })
     }
 
     /// Extract string data from target file in index.
@@ -627,29 +607,20 @@ impl Git {
     #[instrument(skip(self, name))]
     pub(crate) fn extract_file_data(&self, name: impl AsRef<str>) -> Result<String> {
         if self.is_empty()? {
-            warn!(
-                "Repository {:?} is empty, no {:?} file to extract",
-                self.name,
-                name.as_ref()
-            );
+            warn!("Repository {:?} is empty, no {:?} file to extract", self.name, name.as_ref());
             return Ok(String::default());
         }
 
         let commit = self.repository.head()?.peel_to_commit()?;
         let tree = commit.tree()?;
-        let entry = tree
-            .get_name(name.as_ref())
-            .ok_or(Error::Git2FileNotFound {
-                repo: self.name.clone(),
-                file: name.as_ref().into(),
-            })?;
+        let entry = tree.get_name(name.as_ref()).ok_or(Error::Git2FileNotFound {
+            repo: self.name.clone(),
+            file: name.as_ref().into(),
+        })?;
         let blob = entry.to_object(&self.repository)?.peel_to_blob()?;
 
         let content = String::from_utf8_lossy(blob.content()).into_owned();
-        debug!(
-            "Extracted the following content from {:?}\n{content}",
-            name.as_ref()
-        );
+        debug!("Extracted the following content from {:?}\n{content}", name.as_ref());
 
         Ok(content)
     }
@@ -671,10 +642,7 @@ impl Git {
         }
 
         if !self.is_bare() {
-            warn!(
-                "Repository {:?} is normal, deployment unnecessary",
-                self.path
-            );
+            warn!("Repository {:?} is normal, deployment unnecessary", self.path);
             return Ok(());
         }
 
@@ -776,12 +744,7 @@ impl Git {
         let path_args: Vec<OsString> = match &self.kind {
             DeploymentKind::Normal => vec!["--git-dir".into(), gitdir],
             DeploymentKind::BareAlias(dir_alias) => {
-                vec![
-                    "--git-dir".into(),
-                    gitdir,
-                    "--work-tree".into(),
-                    dir_alias.to_os_string(),
-                ]
+                vec!["--git-dir".into(), gitdir, "--work-tree".into(), dir_alias.to_os_string()]
             }
         };
 
@@ -822,11 +785,7 @@ impl GitBuilder {
         let path = path.into();
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
 
-        Self {
-            path,
-            name,
-            ..Default::default()
-        }
+        Self { path, name, ..Default::default() }
     }
 
     /// Set kind of repository for deployment.
@@ -1016,10 +975,7 @@ impl Prompter for ProgressBarAuthenticator {
         let prompt = || -> Option<(String, String)> {
             info!("Authentication required for {url}");
             let username = Text::new("username").prompt().unwrap();
-            let password = Password::new("password")
-                .without_confirmation()
-                .prompt()
-                .unwrap();
+            let password = Password::new("password").without_confirmation().prompt().unwrap();
             Some((username, password))
         };
 
@@ -1038,10 +994,7 @@ impl Prompter for ProgressBarAuthenticator {
     ) -> Option<String> {
         let prompt = || -> Option<String> {
             info!("Authentication required for {url} for user {username}");
-            let password = Password::new("password")
-                .without_confirmation()
-                .prompt()
-                .unwrap();
+            let password = Password::new("password").without_confirmation().prompt().unwrap();
             Some(password)
         };
 
@@ -1059,10 +1012,7 @@ impl Prompter for ProgressBarAuthenticator {
     ) -> Option<String> {
         let prompt = || -> Option<String> {
             info!("Authentication required for {}", private_key_path.display());
-            let password = Password::new("password")
-                .without_confirmation()
-                .prompt()
-                .unwrap();
+            let password = Password::new("password").without_confirmation().prompt().unwrap();
             Some(password)
         };
 
@@ -1153,13 +1103,10 @@ impl SparseCheckout {
     pub(crate) fn write_rules(&self, action: ExcludeAction) -> Result<()> {
         let rules: String = match action {
             ExcludeAction::ExcludeUnwanted => {
-                let mut excluded = self
-                    .exclusion_rules
-                    .iter()
-                    .fold(String::new(), |mut acc, u| {
-                        writeln!(&mut acc, "!{u}").unwrap();
-                        acc
-                    });
+                let mut excluded = self.exclusion_rules.iter().fold(String::new(), |mut acc, u| {
+                    writeln!(&mut acc, "!{u}").unwrap();
+                    acc
+                });
                 excluded.insert_str(0, "/*\n");
                 excluded
             }
@@ -1179,10 +1126,7 @@ impl SparseCheckout {
     ///
     /// [`glob_match`]: crate::utils::glob_match
     pub(crate) fn iter(&self) -> SparsityRuleIter<'_> {
-        SparsityRuleIter {
-            exclusion_rules: &self.exclusion_rules,
-            index: 0,
-        }
+        SparsityRuleIter { exclusion_rules: &self.exclusion_rules, index: 0 }
     }
 }
 
