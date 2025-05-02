@@ -46,8 +46,10 @@ impl Root {
         let entry = RepoEntry::builder("root")?
             .url(url.as_ref())
             .deployment(DeploymentKind::BareAlias(DirAlias::default()))
-            .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
-            .clone( &bar)?;
+            .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
+                bar.clone(),
+            )))
+            .clone(&bar)?;
         bar.finish_and_clear();
 
         let deployer = RepoEntryDeployer::new(&entry);
@@ -158,7 +160,9 @@ impl Node {
         let entry = RepoEntry::builder(name.as_ref())?
             .url(&node.url)
             .deployment(node.deployment.clone())
-            .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
+            .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
+                bar.clone(),
+            )))
             .clone(&bar)?;
         let mut deployer = RepoEntryDeployer::new(&entry);
         deployer.add_excluded(node.excluded.iter().flatten());
@@ -174,9 +178,8 @@ impl Node {
     #[instrument(skip(name, node))]
     pub fn new_init(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         info!("Initialize node repository {:?}", name.as_ref());
-        let entry = RepoEntry::builder(name.as_ref())?
-            .deployment(node.deployment.clone())
-            .init()?;
+        let entry =
+            RepoEntry::builder(name.as_ref())?.deployment(node.deployment.clone()).init()?;
         let mut deployer = RepoEntryDeployer::new(&entry);
         deployer.add_excluded(node.excluded.iter().flatten());
 
@@ -189,9 +192,8 @@ impl Node {
     ///
     /// - Return [`Error::Git2`] if repository could not be opened.
     pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
-        let entry = RepoEntry::builder(name.as_ref())?
-            .deployment(node.deployment.clone())
-            .open()?;
+        let entry =
+            RepoEntry::builder(name.as_ref())?.deployment(node.deployment.clone()).open()?;
         let mut deployer = RepoEntryDeployer::new(&entry);
         deployer.add_excluded(node.excluded.iter().flatten());
 
@@ -381,7 +383,11 @@ impl<'cluster> TablizeCluster<'cluster> {
     #[instrument(skip(self))]
     pub fn fancy(&self) -> Result<()> {
         let mut builder = tabled::builder::Builder::new();
-        let state = if is_deployed(&self.root.entry, &self.root.deployer.excluded, DeployState::WithExcluded)? {
+        let state = if is_deployed(
+            &self.root.entry,
+            &self.root.deployer.excluded,
+            DeployState::WithExcluded,
+        )? {
             "deployed fully"
         } else {
             "deployed"
@@ -401,7 +407,11 @@ impl<'cluster> TablizeCluster<'cluster> {
             let (deploy, state) = if node.entry.is_bare_alias() {
                 if is_deployed(&node.entry, &node.deployer.excluded, DeployState::WithExcluded)? {
                     ("bare-alias", "deployed fully")
-                } else if is_deployed(&node.entry, &node.deployer.excluded, DeployState::WithoutExcluded)? {
+                } else if is_deployed(
+                    &node.entry,
+                    &node.deployer.excluded,
+                    DeployState::WithoutExcluded,
+                )? {
                     ("bare-alias", "deployed")
                 } else {
                     ("bare-alias", "undeployed")
@@ -419,7 +429,6 @@ impl<'cluster> TablizeCluster<'cluster> {
         Ok(())
     }
 }
-
 
 pub(crate) struct RepoEntry {
     name: String,
@@ -467,10 +476,7 @@ impl RepoEntry {
     }
 
     pub(crate) fn current_branch(&self) -> Result<String> {
-        let shorthand = self.repository
-            .head()?
-            .shorthand_bytes()
-            .to_vec();
+        let shorthand = self.repository.head()?.shorthand_bytes().to_vec();
 
         Ok(String::from_utf8_lossy(shorthand.as_slice()).into_owned())
     }
@@ -553,7 +559,10 @@ impl RepoEntryBuilder {
     }
 
     /// Set authentication prompter.
-    pub(crate) fn authentication_prompter(mut self, prompter: impl Prompter + Clone + 'static) -> Self {
+    pub(crate) fn authentication_prompter(
+        mut self,
+        prompter: impl Prompter + Clone + 'static,
+    ) -> Self {
         self.authenticator = self.authenticator.set_prompter(prompter);
         self
     }
@@ -641,7 +650,7 @@ pub(crate) trait Deployment {
         &self,
         entry: &RepoEntry,
         excluded: &SparseCheckout,
-        action: DeployAction
+        action: DeployAction,
     ) -> Result<()>;
 }
 
@@ -665,12 +674,11 @@ impl RepoEntryDeployer {
         &self,
         deployer: impl Deployment,
         entry: &RepoEntry,
-        action: DeployAction
+        action: DeployAction,
     ) -> Result<()> {
         deployer.deploy_action(entry, &self.excluded, action)
     }
 }
-
 
 pub(crate) struct NormalDeployment;
 
@@ -712,7 +720,7 @@ impl Deployment for RootDeployment {
         let msg = match action {
             DeployAction::Deploy => {
                 if is_deployed(&entry, &excluded, DeployState::WithoutExcluded)? {
-                    return Ok(())
+                    return Ok(());
                 }
 
                 warn!("Root repository not deployed");

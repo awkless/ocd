@@ -101,9 +101,7 @@ pub fn home_dir() -> Result<PathBuf> {
 /// - Return [`Error::NoWayHome`] if path to user's home directory cannot be determined.
 /// - Return [`Error::Io`] if configuration directory path could not be created.
 pub fn config_dir() -> Result<PathBuf> {
-    let config_dir = dirs::config_dir()
-        .map(|path| path.join("ocd"))
-        .ok_or(Error::NoWayHome)?;
+    let config_dir = dirs::config_dir().map(|path| path.join("ocd")).ok_or(Error::NoWayHome)?;
 
     if !config_dir.exists() {
         info!("create configuration directory at {config_dir:?}");
