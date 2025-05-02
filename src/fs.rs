@@ -28,13 +28,7 @@ pub fn load<C>(filename: impl AsRef<str>, existence: Existence) -> Result<C>
 where
     C: std::str::FromStr<Err = Error>,
 {
-    let config_dir = config_dir()?;
-    if !config_dir.exists() {
-        info!("create configuration directory at {config_dir:?}");
-        create_dir_all(&config_dir)?;
-    }
-
-    let path = config_dir.join(filename.as_ref());
+    let path = config_dir()?.join(filename.as_ref());
     debug!("Load configuration file {path:?}");
 
     let data = match read_to_string(path) {
@@ -79,13 +73,7 @@ pub fn save<C>(filename: impl AsRef<str>, config: C) -> Result<()>
 where
     C: std::fmt::Display,
 {
-    let config_dir = config_dir()?;
-    if !config_dir.exists() {
-        info!("create configuration directory at {config_dir:?}");
-        create_dir_all(&config_dir)?;
-    }
-
-    let path = config_dir.join(filename.as_ref());
+    let path = config_dir()?.join(filename.as_ref());
     debug!("Save configuration file {path:?}");
 
     OpenOptions::new()
@@ -110,16 +98,26 @@ pub fn home_dir() -> Result<PathBuf> {
 ///
 /// # Errors
 ///
-/// - Return [`Error::NoWayConfig`] if path to configuration directory cannot be determined.
+/// - Return [`Error::NoWayHome`] if path to user's home directory cannot be determined.
+/// - Return [`Error::Io`] if configuration directory path could not be created.
 pub fn config_dir() -> Result<PathBuf> {
-    dirs::config_dir().map(|path| path.join("ocd")).ok_or(Error::NoWayConfig)
+    let config_dir = dirs::config_dir()
+        .map(|path| path.join("ocd"))
+        .ok_or(Error::NoWayHome)?;
+
+    if !config_dir.exists() {
+        info!("create configuration directory at {config_dir:?}");
+        create_dir_all(&config_dir)?;
+    }
+
+    Ok(config_dir)
 }
 
 /// Get absolute path to OCD's data directory.
 ///
 /// # Errors
 ///
-/// - Return [`Error::NoWayData`] if path to configuration directory cannot be determined.
+/// - Return [`Error::NoWayHome`] if user's home directory could not be determined.
 pub fn data_dir() -> Result<PathBuf> {
-    dirs::data_dir().map(|path| path.join("ocd")).ok_or(Error::NoWayData)
+    dirs::data_dir().map(|path| path.join("ocd")).ok_or(Error::NoWayHome)
 }
