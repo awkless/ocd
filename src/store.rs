@@ -44,9 +44,10 @@ impl Root {
     pub fn new_clone(url: impl AsRef<str>) -> Result<Self> {
         let bar = ProgressBar::no_length();
         let entry = RepoEntry::builder("root")?
+            .url(url.as_ref())
             .deployment(DeploymentKind::BareAlias(DirAlias::default()))
             .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
-            .clone(url.as_ref(), &bar)?;
+            .clone( &bar)?;
         bar.finish_and_clear();
 
         let deployer = RepoEntryDeployer::new(&entry);
@@ -155,9 +156,10 @@ impl Node {
     pub fn new_clone(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         let bar = ProgressBar::no_length();
         let entry = RepoEntry::builder(name.as_ref())?
+            .url(&node.url)
             .deployment(node.deployment.clone())
             .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
-            .clone(&node.url, &bar)?;
+            .clone(&bar)?;
         let mut deployer = RepoEntryDeployer::new(&entry);
         deployer.add_excluded(node.excluded.iter().flatten());
 
@@ -237,7 +239,7 @@ impl Node {
 
 /// Clone all nodes in cluster definition asynchronously.
 pub struct MultiNodeClone {
-    nodes: Vec<GitBuilder>,
+    nodes: Vec<RepoEntryBuilder>,
     multi_bar: MultiProgress,
     jobs: Option<usize>,
 }
@@ -254,13 +256,13 @@ impl MultiNodeClone {
     /// - Return [`Error::NoWayData`] if data directory path cannot be determined.
     pub fn new(cluster: &Cluster, jobs: Option<usize>) -> Result<Self> {
         let multi_bar = MultiProgress::new();
-        let mut nodes: Vec<GitBuilder> = Vec::new();
+        let mut nodes: Vec<RepoEntryBuilder> = Vec::new();
 
         for (name, node) in cluster.nodes.iter() {
-            let repo = GitBuilder::new(data_dir()?.join(name))
+            let repo = RepoEntryBuilder::new(name)?
                 .url(&node.url)
-                .kind(node.deployment.clone())
-                .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::MultiBar(
+                .deployment(node.deployment.clone())
+                .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::MultiBar(
                     multi_bar.clone(),
                 )));
 
@@ -514,10 +516,20 @@ impl RepoEntry {
     }
 }
 
+impl std::fmt::Debug for RepoEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RepoEntry {{ name: {:?}, ", self.name)?;
+        write!(f, "repository: (git2 stuff), ")?;
+        write!(f, "deployment: {:?} ", self.deployment)?;
+        writeln!(f, "authenticator: {:?} }}", self.authenticator)
+    }
+}
+
 #[derive(Default, Debug)]
 pub(crate) struct RepoEntryBuilder {
     name: String,
     path: PathBuf,
+    url: String,
     deployment: DeploymentKind,
     authenticator: GitAuthenticator,
 }
@@ -535,19 +547,24 @@ impl RepoEntryBuilder {
         self
     }
 
+    pub(crate) fn url(mut self, url: impl Into<String>) -> Self {
+        self.url = url.into();
+        self
+    }
+
     /// Set authentication prompter.
     pub(crate) fn authentication_prompter(mut self, prompter: impl Prompter + Clone + 'static) -> Self {
         self.authenticator = self.authenticator.set_prompter(prompter);
         self
     }
 
-    pub(crate) fn clone(self, url: impl AsRef<str>, bar: &ProgressBar) -> Result<RepoEntry> {
+    pub(crate) fn clone(self, bar: &ProgressBar) -> Result<RepoEntry> {
         let style = ProgressStyle::with_template(
             "{elapsed_precise:.green}  {msg:<50}  [{wide_bar:.yellow/blue}]",
         )?
         .progress_chars("-Cco.");
         bar.set_style(style);
-        bar.set_message(format!("{} - {}", self.name, url.as_ref()));
+        bar.set_message(format!("{} - {}", self.name, self.url));
         bar.enable_steady_tick(std::time::Duration::from_millis(100));
 
         let mut throttle = Instant::now();
@@ -572,7 +589,7 @@ impl RepoEntryBuilder {
         let repository = RepoBuilder::new()
             .bare(self.deployment.is_bare())
             .fetch_options(fo)
-            .clone(url.as_ref(), &self.path)?;
+            .clone(&self.url, &self.path)?;
 
         if self.deployment.is_bare() {
             let mut config = repository.config()?;
@@ -830,452 +847,6 @@ fn is_deployed(entry: &RepoEntry, excluded: &SparseCheckout, state: DeployState)
     }
 
     Ok(true)
-}
-
-/// Git repository manager.
-///
-/// Wraps a Git repository to provide important functionality regarding the management, deployment,
-/// and processing of repository data throughout the codebase.
-pub(crate) struct Git {
-    name: String,
-    path: PathBuf,
-    kind: DeploymentKind,
-    url: String,
-    excluded: SparseCheckout,
-    authenticator: GitAuthenticator,
-    repository: Repository,
-}
-
-impl Git {
-    /// Construct new Git repository through builder.
-    pub(crate) fn builder(path: impl Into<PathBuf>) -> GitBuilder {
-        GitBuilder::new(path.into())
-    }
-
-    /// Set kind of repository for deployment.
-    pub(crate) fn set_kind(&mut self, kind: DeploymentKind) {
-        self.kind = kind;
-    }
-
-    /// Set files to exclude based on a set of sparsity rules.
-    pub(crate) fn set_excluded(&mut self, rules: impl IntoIterator<Item = impl Into<String>>) {
-        self.excluded.add_exclusions(rules);
-    }
-
-    /// Name of managed repository.
-    pub(crate) fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Path of managed repository.
-    pub(crate) fn path(&self) -> &Path {
-        &self.path
-    }
-
-    /// Determine if repository is bare.
-    pub(crate) fn is_bare(&self) -> bool {
-        self.kind.is_bare() && self.repository.is_bare()
-    }
-
-    /// Determine if repository is empty.
-    ///
-    /// Empty in this case simply means that a repository has no commits.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Error::Git2`] for any repository operation failure.
-    pub(crate) fn is_empty(&self) -> Result<bool> {
-        match self.repository.head() {
-            Ok(_) => {
-                let mut revwalk = self.repository.revwalk()?;
-                revwalk.push_head()?;
-                let mut no_commits = true;
-
-                if revwalk.flatten().next().is_some() {
-                    no_commits = false;
-                }
-
-                Ok(no_commits)
-            }
-            Err(_) => Ok(true),
-        }
-    }
-
-    /// Determine if repository is currently deployed.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Error::Git2`] for any repository operation failure.
-    pub(crate) fn is_deployed(&self, state: DeployState) -> Result<bool> {
-        if self.is_empty()? {
-            return Ok(false);
-        }
-
-        let worktree = match &self.kind {
-            DeploymentKind::Normal => return Ok(false),
-            DeploymentKind::BareAlias(worktree) => worktree,
-        };
-
-        // Thank you Eric at https://www.hydrogen18.com/blog/list-all-files-git-repo-pygit2.html.
-        let mut entries = Vec::new();
-        let commit = self.repository.head()?.peel_to_commit()?;
-        let tree = commit.tree()?;
-        for entry in tree.iter() {
-            if let Some(filename) = entry.name() {
-                entries.push(filename.to_string());
-            }
-        }
-
-        if state == DeployState::WithoutExcluded {
-            let excludes = glob_match(self.excluded.iter(), entries.iter());
-            entries.retain(|x| !excludes.contains(x));
-        }
-
-        for entry in entries {
-            let path = worktree.0.join(entry);
-            if !path.exists() {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
-    }
-
-    /// Get current name of branch.
-    ///
-    /// # Errors
-    ///
-    /// - Will fail if HEAD is not pointing to a named branch.
-    pub(crate) fn current_branch(&self) -> Result<String> {
-        self.repository
-            .head()
-            .map_err(Error::from)?
-            .shorthand()
-            .map(Into::into)
-            .ok_or(Error::Git2UnknownBranch { repo: self.name().into() })
-    }
-
-    /// Extract string data from target file in index.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Error::Git2FileNotFound`] if file does not exist in index.
-    /// - Return [`Error::Git2`] for any other failure with repository.
-    ///
-    /// [`Error::Git2FileNotFound`]: crate::Error::Git2FileNotFound
-    /// [`Error::Git2`]: crate::Error::Git2
-    #[instrument(skip(self, name))]
-    pub(crate) fn extract_file_data(&self, name: impl AsRef<str>) -> Result<String> {
-        if self.is_empty()? {
-            warn!("Repository {:?} is empty, no {:?} file to extract", self.name, name.as_ref());
-            return Ok(String::default());
-        }
-
-        let commit = self.repository.head()?.peel_to_commit()?;
-        let tree = commit.tree()?;
-        let entry = tree.get_name(name.as_ref()).ok_or(Error::NoClusterFile)?;
-        let blob = entry.to_object(&self.repository)?.peel_to_blob()?;
-
-        let content = String::from_utf8_lossy(blob.content()).into_owned();
-        debug!("Extracted the following content from {:?}\n{content}", name.as_ref());
-
-        Ok(content)
-    }
-
-    /// Deploy repository index to target worktree alias based on selected deployment action.
-    ///
-    /// Will not deploy a repository that is normal. Will also not perform target deployment action
-    /// if that action was already performed on the repository's index beforehand.
-    ///
-    /// # Errors
-    ///
-    /// - Will fail if required sparsity rules cannot be written to sparse checkout file.
-    /// - Will fail if repository index cannot be deployed for whatever reason.
-    #[instrument(skip(self, action))]
-    pub(crate) fn deploy(&self, action: DeployAction) -> Result<()> {
-        if self.is_empty()? {
-            warn!("Repository {:?} is empty, nothing to deploy", self.name());
-            return Ok(());
-        }
-
-        if !self.is_bare() {
-            warn!("Repository {:?} is normal, deployment unnecessary", self.path);
-            return Ok(());
-        }
-
-        let msg = match action {
-            DeployAction::Deploy => {
-                if self.is_deployed(DeployState::WithoutExcluded)? {
-                    warn!("Repository {:?} is already deployed", self.path);
-                    return Ok(());
-                }
-
-                self.excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
-                format!("deploy {:?}", self.path)
-            }
-            DeployAction::DeployAll => {
-                if self.is_deployed(DeployState::WithExcluded)? {
-                    warn!("Repository {:?} is already deployed fully", self.path);
-                    return Ok(());
-                }
-
-                self.excluded.write_rules(ExcludeAction::IncludeAll)?;
-                format!("deploy all of {:?}", self.path)
-            }
-            DeployAction::Undeploy => {
-                if !self.is_deployed(DeployState::WithoutExcluded)? {
-                    warn!("Repository {:?} is already undeployed fully", self.path);
-                    return Ok(());
-                }
-
-                self.excluded.write_rules(ExcludeAction::ExcludeAll)?;
-                format!("undeploy {:?}", self.path)
-            }
-            DeployAction::UndeployExcludes => {
-                if !self.is_deployed(DeployState::WithExcluded)? {
-                    warn!("Repository {:?} excluded files are undeployed", self.path);
-                    return Ok(());
-                }
-
-                self.excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
-                format!("undeploy excluded files of {:?}", self.path)
-            }
-        };
-
-        let output = self.gitcall_non_interactive(["checkout"])?;
-        info!("{msg}\n{output}");
-
-        Ok(())
-    }
-
-    /// Call Git binary non-interactively.
-    ///
-    /// Will pipe stdout and stderr into a string that is returned to call for further evaluation.
-    /// Caller cannot interact with Git binary at all. Mainly meant to feed Git binary one-liners
-    /// whose output will be parsed and processed for further actions in codebase.
-    ///
-    /// # Errors
-    ///
-    /// - Will fail if Git binary cannot be found.
-    /// - Will fail if provided arguments are invalid.
-    #[instrument(skip(self, args))]
-    pub fn gitcall_non_interactive(
-        &self,
-        args: impl IntoIterator<Item = impl Into<OsString>>,
-    ) -> Result<String> {
-        let args = self.expand_bin_args(args);
-        debug!("Run non interactive git with {args:?}");
-        syscall_non_interactive("git", args)
-    }
-
-    /// Call git binary interactively.
-    ///
-    /// Allows caller to give control of current session to Git binary so user can properly
-    /// interact with Git itself. Control is then given back to the OCD program once the user
-    /// finishes interacting with Git.
-    ///
-    /// Once called, Git binary will inherit stdout and stderr from user's current environment. Any
-    /// output that Git provides is produced interactively. Thus, there is no need to collect
-    /// output, because user will have already seen it.
-    ///
-    /// # Errors
-    ///
-    /// - Will fail if Git binary cannot be found.
-    /// - Will fail if provided arguments are invalid.
-    #[instrument(skip(self, args))]
-    pub fn gitcall_interactive(
-        &self,
-        args: impl IntoIterator<Item = impl Into<OsString>>,
-    ) -> Result<()> {
-        info!("Interactive call to git for {:?}", self.name);
-        let args = self.expand_bin_args(args);
-        debug!("Run interactive git with {args:?}");
-        syscall_interactive("git", args)
-    }
-
-    fn expand_bin_args(
-        &self,
-        args: impl IntoIterator<Item = impl Into<OsString>>,
-    ) -> Vec<OsString> {
-        let gitdir = self.repository.path().to_string_lossy().into_owned().into();
-        let path_args: Vec<OsString> = match &self.kind {
-            DeploymentKind::Normal => vec!["--git-dir".into(), gitdir],
-            DeploymentKind::BareAlias(dir_alias) => {
-                vec!["--git-dir".into(), gitdir, "--work-tree".into(), dir_alias.to_os_string()]
-            }
-        };
-
-        let mut bin_args: Vec<OsString> = Vec::new();
-        bin_args.extend(path_args);
-        bin_args.extend(args.into_iter().map(Into::into));
-
-        bin_args
-    }
-}
-
-impl std::fmt::Debug for Git {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Repository {{ name: {:?}, ", self.name)?;
-        write!(f, "path: {:?}, ", self.path)?;
-        write!(f, "kind: {:?} ", self.kind)?;
-        write!(f, "url: {:?} ", self.url)?;
-        write!(f, "excludes: {:?} ", self.excluded)?;
-        write!(f, "authenticator: {:?} ", self.authenticator)?;
-        writeln!(f, "repository: git2 stuff :D }}")
-    }
-}
-
-/// Builder for [`Git`] type.
-#[derive(Default, Debug)]
-pub(crate) struct GitBuilder {
-    name: String,
-    path: PathBuf,
-    kind: DeploymentKind,
-    url: String,
-    excluded: SparseCheckout,
-    authenticator: GitAuthenticator,
-}
-
-impl GitBuilder {
-    /// Construct new empty [`Git`] builder.
-    pub(crate) fn new(path: impl Into<PathBuf>) -> Self {
-        let path = path.into();
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
-
-        Self { path, name, ..Default::default() }
-    }
-
-    /// Set kind of repository for deployment.
-    pub(crate) fn kind(mut self, kind: DeploymentKind) -> Self {
-        self.kind = kind;
-        self
-    }
-
-    /// Set URL to clone from.
-    pub(crate) fn url(mut self, url: impl Into<String>) -> Self {
-        self.url = url.into();
-        self
-    }
-
-    /// Set files to exclude based on a set of sparsity rules.
-    pub(crate) fn excluded(mut self, rules: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.excluded.add_exclusions(rules);
-        self
-    }
-
-    /// Set authentication prompter.
-    pub(crate) fn authenticator(mut self, prompter: impl Prompter + Clone + 'static) -> Self {
-        self.authenticator = self.authenticator.set_prompter(prompter);
-        self
-    }
-
-    /// Build [`Git`] by cloning it.
-    ///
-    /// Will track progress of clone through a progress bar.
-    ///
-    /// # Errors
-    ///
-    /// - Return `Error::Git2` if repository could not be cloned.
-    pub(crate) fn clone(mut self, bar: &ProgressBar) -> Result<Git> {
-        let style = ProgressStyle::with_template(
-            "{elapsed_precise:.green}  {msg:<50}  [{wide_bar:.yellow/blue}]",
-        )?
-        .progress_chars("-Cco.");
-        bar.set_style(style);
-        bar.set_message(self.url.clone());
-        bar.enable_steady_tick(std::time::Duration::from_millis(100));
-
-        let mut throttle = Instant::now();
-        let config = Config::open_default()?;
-        let mut rc = RemoteCallbacks::new();
-        rc.credentials(self.authenticator.credentials(&config));
-        rc.transfer_progress(|progress| {
-            let stats = progress.to_owned();
-            let bar_size = stats.total_objects() as u64;
-            let bar_pos = stats.received_objects() as u64;
-            if throttle.elapsed() > Duration::from_millis(50) {
-                throttle = Instant::now();
-                bar.set_length(bar_size);
-                bar.set_position(bar_pos);
-            }
-            true
-        });
-
-        let mut fo = FetchOptions::new();
-        fo.remote_callbacks(rc);
-
-        let repository = RepoBuilder::new()
-            .bare(self.kind.is_bare())
-            .fetch_options(fo)
-            .clone(&self.url, &self.path)?;
-
-        if self.kind.is_bare() {
-            let mut config = repository.config()?;
-            config.set_str("status.showUntrackedFiles", "no")?;
-            config.set_str("core.sparseCheckout", "true")?;
-        }
-
-        self.excluded.set_sparse_path(repository.path());
-
-        Ok(Git {
-            name: self.name,
-            path: self.path,
-            kind: self.kind,
-            url: self.url,
-            excluded: self.excluded,
-            authenticator: self.authenticator,
-            repository,
-        })
-    }
-
-    /// Build [`Git`] by initializing new repository.
-    ///
-    /// # Errors
-    ///
-    /// - Return `Error::Git2` if repository could not be initialized.
-    pub fn init(mut self) -> Result<Git> {
-        let mut opts = RepositoryInitOptions::new();
-        opts.bare(self.kind.is_bare());
-        let repository = Repository::init_opts(&self.path, &opts)?;
-
-        if self.kind.is_bare() {
-            let mut config = repository.config().map_err(Error::from)?;
-            config.set_str("status.showUntrackedFiles", "no")?;
-            config.set_str("core.sparseCheckout", "true")?;
-        }
-
-        self.excluded.set_sparse_path(repository.path());
-
-        Ok(Git {
-            name: self.name,
-            kind: self.kind,
-            url: self.url,
-            path: self.path,
-            excluded: self.excluded,
-            authenticator: self.authenticator,
-            repository,
-        })
-    }
-
-    /// Build [`Git`] by opening existing repository.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Error::Git2`] if repository could not be opened.
-    pub fn open(mut self) -> Result<Git> {
-        let repository = Repository::open(&self.path)?;
-        self.excluded.set_sparse_path(repository.path());
-
-        Ok(Git {
-            name: self.name,
-            kind: self.kind,
-            url: self.url,
-            path: self.path,
-            excluded: self.excluded,
-            authenticator: self.authenticator,
-            repository,
-        })
-    }
 }
 
 /// Variants of repository index deployment state.
