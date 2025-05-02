@@ -47,6 +47,7 @@ impl Root {
             .deployment(DeploymentKind::BareAlias(DirAlias::default()))
             .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
             .clone(url.as_ref(), &bar)?;
+        bar.finish_and_clear();
 
         let deployer = RepoEntryDeployer::new(&entry);
         let mut root = Self { entry, deployer };
