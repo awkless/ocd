@@ -138,8 +138,10 @@ impl Root {
 }
 
 /// Manage node repository in repository store.
-#[derive(Debug)]
-pub struct Node(Git);
+pub struct Node {
+    entry: RepoEntry,
+    deployer: RepoEntryDeployer,
+}
 
 impl Node {
     /// Clone node repository into repository store.
@@ -152,14 +154,14 @@ impl Node {
     /// - Return [`Error::Io`] for failed writes to sparse checkout file.
     pub fn new_clone(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         let bar = ProgressBar::no_length();
-        let repo = Git::builder(data_dir()?.join(name.as_ref()))
-            .url(&node.url)
-            .kind(node.deployment.clone())
-            .excluded(node.excluded.iter().flatten())
-            .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
-            .clone(&bar)?;
+        let entry = RepoEntry::builder(name.as_ref())?
+            .deployment(node.deployment.clone())
+            .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
+            .clone(&node.url, &bar)?;
+        let mut deployer = RepoEntryDeployer::new(&entry);
+        deployer.add_excluded(node.excluded.iter().flatten());
 
-        Ok(Self(repo))
+        Ok(Self { entry, deployer })
     }
 
     /// Initialize new node repository in repository store.
@@ -170,13 +172,13 @@ impl Node {
     #[instrument(skip(name, node))]
     pub fn new_init(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         info!("Initialize node repository {:?}", name.as_ref());
-        let repo = Git::builder(data_dir()?.join(name.as_ref()))
-            .kind(node.deployment.clone())
-            .url(&node.url)
-            .excluded(node.excluded.iter().flatten())
+        let entry = RepoEntry::builder(name.as_ref())?
+            .deployment(node.deployment.clone())
             .init()?;
+        let mut deployer = RepoEntryDeployer::new(&entry);
+        deployer.add_excluded(node.excluded.iter().flatten());
 
-        Ok(Self(repo))
+        Ok(Self { entry, deployer })
     }
 
     /// Construct new node by opening existing node repository.
@@ -185,23 +187,23 @@ impl Node {
     ///
     /// - Return [`Error::Git2`] if repository could not be opened.
     pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
-        let repo = Git::builder(data_dir()?.join(name.as_ref()))
-            .kind(node.deployment.clone())
-            .url(&node.url)
-            .excluded(node.excluded.iter().flatten())
+        let entry = RepoEntry::builder(name.as_ref())?
+            .deployment(node.deployment.clone())
             .open()?;
+        let mut deployer = RepoEntryDeployer::new(&entry);
+        deployer.add_excluded(node.excluded.iter().flatten());
 
-        Ok(Self(repo))
+        Ok(Self { entry, deployer })
     }
 
     /// Path to node repository.
     pub fn path(&self) -> &Path {
-        self.0.path()
+        self.entry.repository.path()
     }
 
     /// Name of node repository.
     pub fn name(&self) -> &str {
-        self.0.name()
+        self.entry.name()
     }
 
     /// Get current name of branch.
@@ -210,7 +212,7 @@ impl Node {
     ///
     /// - Will fail if HEAD is not pointing to a named branch.
     pub fn current_branch(&self) -> Result<String> {
-        self.0.current_branch()
+        self.entry.current_branch()
     }
 
     /// Deploy node repository.
@@ -219,7 +221,7 @@ impl Node {
     ///
     /// - Will fail if deployment action fails for whatever reason.
     pub fn deploy(&self, action: DeployAction) -> Result<()> {
-        self.0.deploy(action)
+        self.deployer.deploy_with(BareAliasDeployment, &self.entry, action)
     }
 
     /// Make interactive call to Git binary.
@@ -229,7 +231,7 @@ impl Node {
     /// - Will fail if Git binary cannot be found.
     /// - Will fail if provided arguments are invalid.
     pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
-        self.0.gitcall_interactive(args)
+        self.entry.gitcall_interactive(args)
     }
 }
 
@@ -394,10 +396,10 @@ impl<'cluster> TablizeCluster<'cluster> {
         nodes.sort_by(|a, b| a.name().cmp(b.name()));
 
         for node in &nodes {
-            let (deploy, state) = if node.0.is_bare() {
-                if node.0.is_deployed(DeployState::WithExcluded)? {
+            let (deploy, state) = if node.entry.is_bare_alias() {
+                if is_deployed(&node.entry, &node.deployer.excluded, DeployState::WithExcluded)? {
                     ("bare-alias", "deployed fully")
-                } else if node.0.is_deployed(DeployState::WithoutExcluded)? {
+                } else if is_deployed(&node.entry, &node.deployer.excluded, DeployState::WithoutExcluded)? {
                     ("bare-alias", "deployed")
                 } else {
                     ("bare-alias", "undeployed")
