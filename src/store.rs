@@ -719,35 +719,35 @@ impl Deployment for RootDeployment {
 
         let msg = match action {
             DeployAction::Deploy => {
-                if is_deployed(&entry, &excluded, DeployState::WithoutExcluded)? {
+                if is_deployed(entry, excluded, DeployState::WithoutExcluded)? {
                     return Ok(());
                 }
 
                 warn!("Root repository not deployed");
                 excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
-                format!("Deploy root, because it must always be deployed")
+                "Deploy root, because it must always be deployed".to_string()
             }
             DeployAction::DeployAll => {
-                if is_deployed(&entry, &excluded, DeployState::WithExcluded)? {
+                if is_deployed(entry, excluded, DeployState::WithExcluded)? {
                     warn!("Root repository is already deployed fully");
                     return Ok(());
                 }
 
                 excluded.write_rules(ExcludeAction::IncludeAll)?;
-                format!("Deploy all of root repository")
+                "Deploy all of root repository".to_string()
             }
             DeployAction::Undeploy => {
                 warn!("Root repository cannot be undeployed");
                 return Ok(());
             }
             DeployAction::UndeployExcludes => {
-                if !is_deployed(&entry, &excluded, DeployState::WithExcluded)? {
+                if !is_deployed(entry, excluded, DeployState::WithExcluded)? {
                     warn!("Root repository excluded files are undeployed");
                     return Ok(());
                 }
 
                 excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
-                format!("Undeploy excluded files of root")
+                "Undeploy excluded files of root".to_string()
             }
         };
 
@@ -778,7 +778,7 @@ impl Deployment for BareAliasDeployment {
 
         let msg = match action {
             DeployAction::Deploy => {
-                if is_deployed(&entry, &excluded, DeployState::WithoutExcluded)? {
+                if is_deployed(entry, excluded, DeployState::WithoutExcluded)? {
                     warn!("Repository {:?} is already deployed", entry.name);
                     return Ok(());
                 }
@@ -787,7 +787,7 @@ impl Deployment for BareAliasDeployment {
                 format!("deploy {:?}", entry.name)
             }
             DeployAction::DeployAll => {
-                if is_deployed(&entry, &excluded, DeployState::WithExcluded)? {
+                if is_deployed(entry, excluded, DeployState::WithExcluded)? {
                     warn!("Repository {:?} is already deployed fully", entry.name);
                     return Ok(());
                 }
@@ -796,7 +796,7 @@ impl Deployment for BareAliasDeployment {
                 format!("deploy all of {:?}", entry.name)
             }
             DeployAction::Undeploy => {
-                if !is_deployed(&entry, &excluded, DeployState::WithoutExcluded)? {
+                if !is_deployed(entry, excluded, DeployState::WithoutExcluded)? {
                     warn!("Repository {:?} is already undeployed fully", entry.name);
                     return Ok(());
                 }
@@ -805,7 +805,7 @@ impl Deployment for BareAliasDeployment {
                 format!("undeploy {:?}", entry.name)
             }
             DeployAction::UndeployExcludes => {
-                if !is_deployed(&entry, &excluded, DeployState::WithExcluded)? {
+                if !is_deployed(entry, excluded, DeployState::WithExcluded)? {
                     warn!("Repository {:?} excluded files are undeployed", entry.name);
                     return Ok(());
                 }
