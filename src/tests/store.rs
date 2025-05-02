@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    store::{DeployState, Root},
+    store::{DeployState, Root, is_deployed},
     tests::{GitFixture, GitKind},
     Result,
 };
@@ -39,7 +39,7 @@ fn smoke_root_new_open(_: &str, contents: &str) -> Result<()> {
     run_script!(&txtar.comment())?;
 
     let root = Root::new_open()?;
-    assert!(root.is_deployed(DeployState::WithoutExcluded)?);
+    assert!(is_deployed(DeployState::WithoutExcluded)?);
 
     Ok(())
 }
