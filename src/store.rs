@@ -35,135 +35,84 @@ use std::{
 };
 use tracing::{debug, info, instrument, warn};
 
-/// Manage root repository in repository store.
-pub struct Root(Git);
+pub struct Root {
+    entry: RepoEntry,
+    deployer: RepoEntryDeployer,
+}
 
 impl Root {
-    /// Construct new root repository by cloning it.
-    ///
-    /// Will show progress of the clone through fancy progress bar, and will automatically deploy
-    /// the root repository to target directory alias used in cluster definition.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Error::Git2`] for any failure internal repository failure.
-    /// - Return [`Error::Git2FileNotFound`] if cluster definition does not exist in root.
-    /// - Return [`Error::SyscallInteractive`] for deployment failure.
-    /// - Return [`Error::Io`] for failed writes to sparse checkout file.
     pub fn new_clone(url: impl AsRef<str>) -> Result<Self> {
         let bar = ProgressBar::no_length();
-        let repo = Git::builder(data_dir()?.join("root"))
-            .url(url.as_ref())
-            .kind(DeploymentKind::BareAlias(DirAlias::default()))
-            .authenticator(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
-            .clone(&bar)?;
+        let entry = RepoEntry::builder("root")?
+            .deployment(DeploymentKind::BareAlias(DirAlias::default()))
+            .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(bar.clone())))
+            .clone(url.as_ref(), &bar)?;
 
-        let cluster: Cluster = repo.extract_file_data("cluster.toml")?.parse()?;
-        let mut root = Self(repo);
-        root.0.set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias));
-        root.0.set_excluded(cluster.root.excluded.iter().flatten());
-        root.0.deploy(DeployAction::Deploy)?;
+        let deployer = RepoEntryDeployer::new(&entry);
+        let mut root = Self { entry, deployer };
+        let cluster = root.extract_cluster_file()?;
+
+        root.entry.set_deployment(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
+        root.deployer.deploy_with(BareAliasDeployment, &root.entry, DeployAction::Deploy)?;
 
         Ok(root)
     }
 
-    /// Initialize new root repository.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Git2`] if root repository could not be initialized.
-    #[instrument(level = "debug")]
-    pub fn new_init() -> Result<Self> {
-        info!("Initialize root repository");
-        let root = Git::builder(data_dir()?.join("root"))
-            .kind(DeploymentKind::BareAlias(DirAlias::default()))
-            .init()?;
-
-        Ok(Self(root))
-    }
-
-    /// Construct new root by opening existing root repository.
-    ///
-    /// Will ensure that root is always deployed if it was somehow undeployed for whatever reason.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Error::Git2`] if opening root repository failed.
-    /// - Return [`Error::Git2FileNotFound`] if root somehow does not contain a cluster definition.
-    #[instrument(level = "debug")]
     pub fn new_open() -> Result<Self> {
-        let repo = Git::builder(data_dir()?.join("root")).open()?;
-        let cluster: Cluster = repo.extract_file_data("cluster.toml")?.parse()?;
-        let mut root = Self(repo);
-        root.0.set_kind(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
-        root.0.set_excluded(cluster.root.excluded.iter().flatten());
+        let entry = RepoEntry::builder("root")?.open()?;
+        let deployer = RepoEntryDeployer::new(&entry);
+        let mut root = Self { entry, deployer };
+        let cluster = root.extract_cluster_file()?;
 
-        if !root.0.is_deployed(DeployState::WithoutExcluded)? {
-            warn!("Deploy root repository, because it was not already deployed");
-            root.0.deploy(DeployAction::Deploy)?;
-        }
+        root.entry.set_deployment(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
+        root.deployer.deploy_with(RootDeployment, &root.entry, DeployAction::Deploy)?;
 
         Ok(root)
     }
 
-    /// Get path to root.
-    pub fn path(&self) -> &Path {
-        &self.0.path()
+    pub fn new_init() -> Result<Self> {
+        let entry = RepoEntry::builder("root")?
+            .deployment(DeploymentKind::BareAlias(DirAlias::default()))
+            .init()?;
+        let deployer = RepoEntryDeployer::new(&entry);
+
+        Ok(Self { entry, deployer })
     }
 
-    pub(crate) fn is_deployed(&self, state: DeployState) -> Result<bool> {
-        self.0.is_deployed(state)
-    }
-
-    /// Get current name of branch.
-    ///
-    /// # Errors
-    ///
-    /// - Will fail if HEAD is not pointing to a named branch.
-    pub fn current_branch(&self) -> Result<String> {
-        self.0.current_branch()
-    }
-
-    /// Dpeloy root repository.
-    ///
-    /// Will warn if user tries to undeploy the root repository, and will warn if the user tries to
-    /// deploy the root repository even though it should always be deployed.
-    ///
-    /// # Errors
-    ///
-    /// - Will fail if deployment action fails.
-    #[instrument(skip(self, action))]
     pub fn deploy(&self, action: DeployAction) -> Result<()> {
-        match action {
-            DeployAction::Deploy => {
-                warn!("Root repository should always be deployed");
-                return Ok(());
-            }
-            DeployAction::Undeploy => {
-                warn!("Root repository cannot be undeployed");
-                return Ok(());
-            }
-            DeployAction::DeployAll | DeployAction::UndeployExcludes => (),
+        self.deployer.deploy_with(RootDeployment, &self.entry, action)
+    }
+
+    pub fn current_branch(&self) -> Result<String> {
+        self.entry.current_branch()
+    }
+
+    pub(crate) fn extract_cluster_file(&self) -> Result<Cluster> {
+        if self.entry.is_empty()? {
+            warn!("Root is empty, no cluster.toml file to extract");
+            return Ok(Cluster::default());
         }
 
-        self.0.deploy(action)
+        let commit = self.entry.repository.head()?.peel_to_commit()?;
+        let tree = commit.tree()?;
+        let blob = if let Some(entry) = tree.get_name(".config/ocd/cluster.toml") {
+            entry.to_object(&self.entry.repository)?.peel_to_blob()?
+        } else {
+            let entry = tree.get_name("cluster.toml").ok_or(Error::NoClusterFile)?;
+            entry.to_object(&self.entry.repository)?.peel_to_blob()?
+        };
+
+        let cluster: Cluster = String::from_utf8_lossy(blob.content()).into_owned().parse()?;
+        debug!("Extracted the following content from cluster.toml\n{cluster}");
+
+        Ok(cluster)
     }
 
-    /// Undeploy and remove entire cluster.
-    ///
-    /// Will undeploy the root and all nodes, before deleting the cluster for good.
-    ///
-    /// # Errors
-    ///
-    /// - Will fail if cluster definition cannot be parsed.
-    /// - Will fail if root or node cannot be undeployed.
-    /// - Will fail if configuration directory cannot be deleted.
-    /// - Will fail if data directory cannot be deleted.
     #[instrument(skip(self), level = "debug")]
     pub fn nuke(&self) -> Result<()> {
-        self.0.deploy(DeployAction::Undeploy)?;
+        let cluster: Cluster = self.extract_cluster_file()?;
+        self.deployer.deploy_with(BareAliasDeployment, &self.entry, DeployAction::Undeploy)?;
 
-        let cluster: Cluster = self.0.extract_file_data("cluster.toml")?.parse()?;
         for (name, node) in &cluster.nodes {
             if !data_dir()?.join(name).exists() {
                 warn!("Node {name:?} not found in repository store");
@@ -182,14 +131,8 @@ impl Root {
         Ok(())
     }
 
-    /// Make interactive call to Git binary.
-    ///
-    /// # Errors
-    ///
-    /// - Will fail if Git binary cannot be found.
-    /// - Will fail if provided arguments are invalid.
     pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
-        self.0.gitcall_interactive(args)
+        self.entry.gitcall_interactive(args)
     }
 }
 
@@ -433,7 +376,7 @@ impl<'cluster> TablizeCluster<'cluster> {
     #[instrument(skip(self))]
     pub fn fancy(&self) -> Result<()> {
         let mut builder = tabled::builder::Builder::new();
-        let state = if self.root.0.is_deployed(DeployState::WithExcluded)? {
+        let state = if is_deployed(&self.root.entry, &self.root.deployer.excluded, DeployState::WithExcluded)? {
             "deployed fully"
         } else {
             "deployed"
@@ -470,6 +413,420 @@ impl<'cluster> TablizeCluster<'cluster> {
 
         Ok(())
     }
+}
+
+
+pub(crate) struct RepoEntry {
+    name: String,
+    repository: Repository,
+    deployment: DeploymentKind,
+    authenticator: GitAuthenticator,
+}
+
+impl RepoEntry {
+    pub(crate) fn builder(name: impl Into<String>) -> Result<RepoEntryBuilder> {
+        RepoEntryBuilder::new(name)
+    }
+
+    pub(crate) fn set_deployment(&mut self, kind: DeploymentKind) {
+        self.deployment = kind;
+    }
+
+    pub(crate) fn is_empty(&self) -> Result<bool> {
+        match self.repository.head() {
+            Ok(_) => {
+                let mut revwalk = self.repository.revwalk()?;
+                revwalk.push_head()?;
+                let mut no_commits = true;
+
+                if revwalk.flatten().next().is_some() {
+                    no_commits = false;
+                }
+
+                Ok(no_commits)
+            }
+            Err(_) => Ok(true),
+        }
+    }
+
+    pub(crate) fn is_bare_alias(&self) -> bool {
+        self.repository.is_bare() && self.deployment.is_bare()
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(crate) fn path(&self) -> &Path {
+        self.repository.path()
+    }
+
+    pub(crate) fn current_branch(&self) -> Result<String> {
+        let shorthand = self.repository
+            .head()?
+            .shorthand_bytes()
+            .to_vec();
+
+        Ok(String::from_utf8_lossy(shorthand.as_slice()).into_owned())
+    }
+
+    #[instrument(skip(self, args))]
+    pub(crate) fn gitcall_non_interactive(
+        &self,
+        args: impl IntoIterator<Item = impl Into<OsString>>,
+    ) -> Result<String> {
+        let args = self.expand_bin_args(args);
+        debug!("Run non interactive git with {args:?}");
+        syscall_non_interactive("git", args)
+    }
+
+    #[instrument(skip(self, args))]
+    pub(crate) fn gitcall_interactive(
+        &self,
+        args: impl IntoIterator<Item = impl Into<OsString>>,
+    ) -> Result<()> {
+        info!("Interactive call to git for {:?}", self.name);
+        let args = self.expand_bin_args(args);
+        debug!("Run interactive git with {args:?}");
+        syscall_interactive("git", args)
+    }
+
+    fn expand_bin_args(
+        &self,
+        args: impl IntoIterator<Item = impl Into<OsString>>,
+    ) -> Vec<OsString> {
+        let gitdir = self.repository.path().to_string_lossy().into_owned().into();
+        let path_args: Vec<OsString> = match &self.deployment {
+            DeploymentKind::Normal => vec!["--git-dir".into(), gitdir],
+            DeploymentKind::BareAlias(dir_alias) => {
+                vec!["--git-dir".into(), gitdir, "--work-tree".into(), dir_alias.to_os_string()]
+            }
+        };
+
+        let mut bin_args: Vec<OsString> = Vec::new();
+        bin_args.extend(path_args);
+        bin_args.extend(args.into_iter().map(Into::into));
+
+        bin_args
+    }
+}
+
+#[derive(Default, Debug)]
+pub(crate) struct RepoEntryBuilder {
+    name: String,
+    path: PathBuf,
+    deployment: DeploymentKind,
+    authenticator: GitAuthenticator,
+}
+
+impl RepoEntryBuilder {
+    pub(crate) fn new(name: impl Into<String>) -> Result<Self> {
+        let name = name.into();
+        let path = data_dir()?.join(&name);
+
+        Ok(Self { name, path, ..Default::default() })
+    }
+
+    pub(crate) fn deployment(mut self, kind: DeploymentKind) -> Self {
+        self.deployment = kind;
+        self
+    }
+
+    /// Set authentication prompter.
+    pub(crate) fn authentication_prompter(mut self, prompter: impl Prompter + Clone + 'static) -> Self {
+        self.authenticator = self.authenticator.set_prompter(prompter);
+        self
+    }
+
+    pub(crate) fn clone(self, url: impl AsRef<str>, bar: &ProgressBar) -> Result<RepoEntry> {
+        let style = ProgressStyle::with_template(
+            "{elapsed_precise:.green}  {msg:<50}  [{wide_bar:.yellow/blue}]",
+        )?
+        .progress_chars("-Cco.");
+        bar.set_style(style);
+        bar.set_message(format!("{} - {}", self.name, url.as_ref()));
+        bar.enable_steady_tick(std::time::Duration::from_millis(100));
+
+        let mut throttle = Instant::now();
+        let config = Config::open_default()?;
+        let mut rc = RemoteCallbacks::new();
+        rc.credentials(self.authenticator.credentials(&config));
+        rc.transfer_progress(|progress| {
+            let stats = progress.to_owned();
+            let bar_size = stats.total_objects() as u64;
+            let bar_pos = stats.received_objects() as u64;
+            if throttle.elapsed() > Duration::from_millis(50) {
+                throttle = Instant::now();
+                bar.set_length(bar_size);
+                bar.set_position(bar_pos);
+            }
+            true
+        });
+
+        let mut fo = FetchOptions::new();
+        fo.remote_callbacks(rc);
+
+        let repository = RepoBuilder::new()
+            .bare(self.deployment.is_bare())
+            .fetch_options(fo)
+            .clone(url.as_ref(), &self.path)?;
+
+        if self.deployment.is_bare() {
+            let mut config = repository.config()?;
+            config.set_str("status.showUntrackedFiles", "no")?;
+            config.set_str("core.sparseCheckout", "true")?;
+        }
+
+        Ok(RepoEntry {
+            name: self.name,
+            repository,
+            deployment: self.deployment,
+            authenticator: self.authenticator,
+        })
+    }
+
+    pub(crate) fn init(self) -> Result<RepoEntry> {
+        let mut opts = RepositoryInitOptions::new();
+        opts.bare(self.deployment.is_bare());
+        let repository = Repository::init_opts(&self.path, &opts)?;
+
+        if self.deployment.is_bare() {
+            let mut config = repository.config().map_err(Error::from)?;
+            config.set_str("status.showUntrackedFiles", "no")?;
+            config.set_str("core.sparseCheckout", "true")?;
+        }
+
+        Ok(RepoEntry {
+            name: self.name,
+            repository,
+            deployment: self.deployment,
+            authenticator: self.authenticator,
+        })
+    }
+
+    pub(crate) fn open(self) -> Result<RepoEntry> {
+        let repository = Repository::open(&self.path)?;
+
+        Ok(RepoEntry {
+            name: self.name,
+            repository,
+            deployment: self.deployment,
+            authenticator: self.authenticator,
+        })
+    }
+}
+
+pub(crate) trait Deployment {
+    fn deploy_action(
+        &self,
+        entry: &RepoEntry,
+        excluded: &SparseCheckout,
+        action: DeployAction
+    ) -> Result<()>;
+}
+
+pub(crate) struct RepoEntryDeployer {
+    excluded: SparseCheckout,
+}
+
+impl RepoEntryDeployer {
+    pub(crate) fn new(entry: &RepoEntry) -> Self {
+        let mut excluded = SparseCheckout::new();
+        excluded.set_sparse_path(entry.path());
+
+        Self { excluded }
+    }
+
+    pub(crate) fn add_excluded(&mut self, rules: impl IntoIterator<Item = impl Into<String>>) {
+        self.excluded.add_exclusions(rules);
+    }
+
+    pub(crate) fn deploy_with(
+        &self,
+        deployer: impl Deployment,
+        entry: &RepoEntry,
+        action: DeployAction
+    ) -> Result<()> {
+        deployer.deploy_action(entry, &self.excluded, action)
+    }
+}
+
+
+pub(crate) struct NormalDeployment;
+
+impl Deployment for NormalDeployment {
+    fn deploy_action(
+        &self,
+        entry: &RepoEntry,
+        _excluded: &SparseCheckout,
+        _action: DeployAction,
+    ) -> Result<()> {
+        if entry.is_bare_alias() {
+            return Err(Error::NormalMixup { name: entry.name().into() });
+        }
+
+        info!("Repository {:?} is normal, no deployment needed", entry.name());
+
+        Ok(())
+    }
+}
+
+pub(crate) struct RootDeployment;
+
+impl Deployment for RootDeployment {
+    fn deploy_action(
+        &self,
+        entry: &RepoEntry,
+        excluded: &SparseCheckout,
+        action: DeployAction,
+    ) -> Result<()> {
+        if entry.is_empty()? {
+            warn!("Root repository is empty, nothing to deploy");
+            return Ok(());
+        }
+
+        if !entry.is_bare_alias() {
+            return Err(Error::BareAliasMixup { name: entry.name().into() });
+        }
+
+        let msg = match action {
+            DeployAction::Deploy => {
+                if is_deployed(&entry, &excluded, DeployState::WithoutExcluded)? {
+                    return Ok(())
+                }
+
+                warn!("Root repository not deployed");
+                excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
+                format!("Deploy root, because it must always be deployed")
+            }
+            DeployAction::DeployAll => {
+                if is_deployed(&entry, &excluded, DeployState::WithExcluded)? {
+                    warn!("Root repository is already deployed fully");
+                    return Ok(());
+                }
+
+                excluded.write_rules(ExcludeAction::IncludeAll)?;
+                format!("Deploy all of root repository")
+            }
+            DeployAction::Undeploy => {
+                warn!("Root repository cannot be undeployed");
+                return Ok(());
+            }
+            DeployAction::UndeployExcludes => {
+                if !is_deployed(&entry, &excluded, DeployState::WithExcluded)? {
+                    warn!("Root repository excluded files are undeployed");
+                    return Ok(());
+                }
+
+                excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
+                format!("Undeploy excluded files of root")
+            }
+        };
+
+        let output = entry.gitcall_non_interactive(["checkout"])?;
+        info!("{msg}\n{output}");
+
+        Ok(())
+    }
+}
+
+pub(crate) struct BareAliasDeployment;
+
+impl Deployment for BareAliasDeployment {
+    fn deploy_action(
+        &self,
+        entry: &RepoEntry,
+        excluded: &SparseCheckout,
+        action: DeployAction,
+    ) -> Result<()> {
+        if entry.is_empty()? {
+            warn!("Repository {:?} is empty, nothing to deploy", entry.name());
+            return Ok(());
+        }
+
+        if !entry.is_bare_alias() {
+            return Err(Error::BareAliasMixup { name: entry.name().into() });
+        }
+
+        let msg = match action {
+            DeployAction::Deploy => {
+                if is_deployed(&entry, &excluded, DeployState::WithoutExcluded)? {
+                    warn!("Repository {:?} is already deployed", entry.name);
+                    return Ok(());
+                }
+
+                excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
+                format!("deploy {:?}", entry.name)
+            }
+            DeployAction::DeployAll => {
+                if is_deployed(&entry, &excluded, DeployState::WithExcluded)? {
+                    warn!("Repository {:?} is already deployed fully", entry.name);
+                    return Ok(());
+                }
+
+                excluded.write_rules(ExcludeAction::IncludeAll)?;
+                format!("deploy all of {:?}", entry.name)
+            }
+            DeployAction::Undeploy => {
+                if !is_deployed(&entry, &excluded, DeployState::WithoutExcluded)? {
+                    warn!("Repository {:?} is already undeployed fully", entry.name);
+                    return Ok(());
+                }
+
+                excluded.write_rules(ExcludeAction::ExcludeAll)?;
+                format!("undeploy {:?}", entry.name)
+            }
+            DeployAction::UndeployExcludes => {
+                if !is_deployed(&entry, &excluded, DeployState::WithExcluded)? {
+                    warn!("Repository {:?} excluded files are undeployed", entry.name);
+                    return Ok(());
+                }
+
+                excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
+                format!("undeploy excluded files of {:?}", entry.name)
+            }
+        };
+
+        let output = entry.gitcall_non_interactive(["checkout"])?;
+        info!("{msg}\n{output}");
+
+        Ok(())
+    }
+}
+
+fn is_deployed(entry: &RepoEntry, excluded: &SparseCheckout, state: DeployState) -> Result<bool> {
+    if entry.is_empty()? {
+        return Ok(false);
+    }
+
+    let worktree = match &entry.deployment {
+        DeploymentKind::Normal => return Ok(false),
+        DeploymentKind::BareAlias(worktree) => worktree,
+    };
+
+    // Thank you Eric at https://www.hydrogen18.com/blog/list-all-files-git-repo-pygit2.html.
+    let mut entries = Vec::new();
+    let commit = entry.repository.head()?.peel_to_commit()?;
+    let tree = commit.tree()?;
+    for entry in tree.iter() {
+        if let Some(filename) = entry.name() {
+            entries.push(filename.to_string());
+        }
+    }
+
+    if state == DeployState::WithoutExcluded {
+        let excludes = glob_match(excluded.iter(), entries.iter());
+        entries.retain(|x| !excludes.contains(x));
+    }
+
+    for entry in entries {
+        let path = worktree.0.join(entry);
+        if !path.exists() {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
 }
 
 /// Git repository manager.
@@ -613,10 +970,7 @@ impl Git {
 
         let commit = self.repository.head()?.peel_to_commit()?;
         let tree = commit.tree()?;
-        let entry = tree.get_name(name.as_ref()).ok_or(Error::Git2FileNotFound {
-            repo: self.name.clone(),
-            file: name.as_ref().into(),
-        })?;
+        let entry = tree.get_name(name.as_ref()).ok_or(Error::NoClusterFile)?;
         let blob = entry.to_object(&self.repository)?.peel_to_blob()?;
 
         let content = String::from_utf8_lossy(blob.content()).into_owned();

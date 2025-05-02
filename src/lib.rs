@@ -95,8 +95,14 @@ pub enum Error {
     #[error(transparent)]
     Git2(#[from] git2::Error),
 
-    #[error("Cannot find file {file:?} in index of {repo:?}")]
-    Git2FileNotFound { repo: String, file: String },
+    #[error("Cannot find \"cluster.toml\" file in root repository")]
+    NoClusterFile,
+
+    #[error("Repository {name:?} defined as bare-alias, but actual repository is normal")]
+    BareAliasMixup { name: String },
+
+    #[error("Repository {name:?} defined as normal, but actual repository is bare-alias")]
+    NormalMixup { name: String },
 
     #[error("Cannot determine current branch of {repo:?}")]
     Git2UnknownBranch { repo: String },
@@ -130,7 +136,9 @@ impl From<Error> for i32 {
             Error::SyscallNonInteractive { .. } => exitcode::OSERR,
             Error::SyscallInteractive { .. } => exitcode::OSERR,
             Error::Git2(..) => exitcode::SOFTWARE,
-            Error::Git2FileNotFound { .. } => exitcode::SOFTWARE,
+            Error::NoClusterFile => exitcode::CONFIG,
+            Error::BareAliasMixup { .. } => exitcode::CONFIG,
+            Error::NormalMixup { .. } => exitcode::CONFIG,
             Error::Git2UnknownBranch { .. } => exitcode::SOFTWARE,
             Error::ProgressStyle(..) => exitcode::SOFTWARE,
             Error::Inquire(..) => exitcode::SOFTWARE,
