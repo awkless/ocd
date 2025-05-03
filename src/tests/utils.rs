@@ -30,34 +30,3 @@ fn smoke_glob_match(patterns: Vec<String>, entries: Vec<String>, mut expect: Vec
     result.sort();
     pretty_assertions::assert_eq!(result, expect);
 }
-
-#[test_case(
-    "git",
-    vec!["ls-files".into(), "README.md".into()],
-    Ok("stdout: README.md".into());
-    "no error"
-)]
-#[test_case(
-    "not_found",
-    vec!["fail".into()],
-    Err(anyhow::anyhow!("should fail"));
-    "no program"
-)]
-#[test_case(
-    "cd",
-    vec!["--bad-flag".into()],
-    Err(anyhow::anyhow!("should fail"));
-    "invalid args"
-)]
-#[test]
-fn smoke_syscall_non_interactive(
-    cmd: &str,
-    args: Vec<String>,
-    expect: Result<String, anyhow::Error>,
-) {
-    let result = syscall_non_interactive(cmd, args);
-    match expect {
-        Ok(message) => assert_eq!(result.unwrap(), message),
-        Err(_) => assert!(result.is_err()),
-    }
-}

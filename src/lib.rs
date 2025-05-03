@@ -53,6 +53,8 @@ pub use cmd::Ocd;
 #[cfg(test)]
 mod tests;
 
+use tracing::{instrument, warn};
+
 /// All possible error variants that OCD can encounter during runtime.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -149,4 +151,48 @@ pub fn exit_status_from_error(error: anyhow::Error) -> i32 {
         Ok(error) => error.into(),
         Err(_) => exitcode::SOFTWARE,
     }
+}
+
+/// Use Unix-like glob pattern matching.
+///
+/// Will match a set of patterns to a given set of entries. Whatever is matched is returned as a
+/// new vector to operate with. Invalid patterns or patterns with no matches or excluded from the
+/// new vector, and logged as errors.
+///
+/// # Invariants
+///
+/// - Always produce valid vector containing matched entries only.
+/// - Process full pattern list without failing.
+#[instrument(skip(patterns, entries), level = "debug")]
+pub(crate) fn glob_match(
+    patterns: impl IntoIterator<Item = impl Into<String>> + std::fmt::Debug,
+    entries: impl IntoIterator<Item = impl Into<String>> + std::fmt::Debug,
+) -> Vec<String> {
+    let patterns = patterns.into_iter().map(Into::into).collect::<Vec<String>>();
+    let entries = entries.into_iter().map(Into::into).collect::<Vec<String>>();
+
+    let mut matched = Vec::new();
+    for pattern in &patterns {
+        let pattern = match glob::Pattern::new(pattern) {
+            Ok(pattern) => pattern,
+            Err(error) => {
+                warn!("Invalid pattern {pattern}: {error}");
+                continue;
+            }
+        };
+
+        let mut found = false;
+        for entry in &entries {
+            if pattern.matches(entry) {
+                found = true;
+                matched.push(entry.to_string());
+            }
+        }
+
+        if !found {
+            warn!("Pattern {} does not match any entries", pattern.as_str());
+        }
+    }
+
+    matched
 }

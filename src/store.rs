@@ -13,8 +13,7 @@
 use crate::{
     fs::{config_dir, data_dir},
     model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
-    utils::{glob_match, syscall_interactive, syscall_non_interactive},
-    Error, Result,
+    Error, Result, glob_match,
 };
 
 use auth_git2::{GitAuthenticator, Prompter};
@@ -34,6 +33,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
+    process::Command,
 };
 use tracing::{debug, info, instrument, warn};
 
@@ -1217,4 +1217,53 @@ impl Iterator for SparsityRuleIter<'_> {
 
         Some(rule)
     }
+}
+
+fn syscall_non_interactive(
+    cmd: impl AsRef<OsStr>,
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+) -> Result<String> {
+    let output = Command::new(cmd.as_ref()).args(args).output()?;
+    let stdout = String::from_utf8_lossy(output.stdout.as_slice()).into_owned();
+    let stderr = String::from_utf8_lossy(output.stderr.as_slice()).into_owned();
+    let mut message = String::new();
+
+    if !stdout.is_empty() {
+        message.push_str(format!("stdout: {stdout}").as_str());
+    }
+
+    if !stderr.is_empty() {
+        message.push_str(format!("stderr: {stderr}").as_str());
+    }
+
+    if !output.status.success() {
+        return Err(Error::SyscallNonInteractive {
+            program: cmd.as_ref().to_string_lossy().into_owned(),
+            message,
+        });
+    }
+
+    // INVARIANT: Chomp trailing newlines.
+    let message = message
+        .strip_suffix("\r\n")
+        .or(message.strip_suffix('\n'))
+        .map(ToString::to_string)
+        .unwrap_or(message);
+
+    Ok(message)
+}
+
+fn syscall_interactive(
+    cmd: impl AsRef<OsStr>,
+    args: impl IntoIterator<Item = impl AsRef<OsStr>>,
+) -> Result<()> {
+    let status = Command::new(cmd.as_ref()).args(args).spawn()?.wait()?;
+
+    if !status.success() {
+        return Err(Error::SyscallInteractive {
+            program: cmd.as_ref().to_string_lossy().into_owned(),
+        });
+    }
+
+    Ok(())
 }
