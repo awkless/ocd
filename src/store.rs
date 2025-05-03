@@ -37,12 +37,23 @@ use std::{
 };
 use tracing::{debug, info, instrument, warn};
 
+/// Root entry in repository store.
 pub struct Root {
     entry: RepoEntry,
     deployer: RepoEntryDeployer,
 }
 
 impl Root {
+    /// Clone root repository from remote URL.
+    ///
+    /// Will deploy root repository by extracting internal cluster configuration
+    /// file.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] if repository cannot be cloned, or cluster
+    ///   definition could not be extracted.
+    /// - Return [`Error::Io`] if deployment fails.
     pub fn new_clone(url: impl AsRef<str>) -> Result<Self> {
         let bar = ProgressBar::no_length();
         let entry = RepoEntry::builder("root")?
@@ -64,6 +75,14 @@ impl Root {
         Ok(root)
     }
 
+    /// Open existing root in repository store.
+    ///
+    /// Will ensure that root is always deployed no matter what.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] if root could not be opened.
+    /// - Return [`Error::Io`] if deployment fails.
     pub fn new_open() -> Result<Self> {
         let entry = RepoEntry::builder("root")?.open()?;
         let deployer = RepoEntryDeployer::new(&entry);
@@ -76,6 +95,11 @@ impl Root {
         Ok(root)
     }
 
+    /// Initialize new empty root in repository store.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] if root could not be initialized.
     pub fn new_init() -> Result<Self> {
         let entry = RepoEntry::builder("root")?
             .deployment(DeploymentKind::BareAlias(DirAlias::default()))
@@ -85,14 +109,34 @@ impl Root {
         Ok(Self { entry, deployer })
     }
 
+    /// Deploy root according to given deployment action.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Io`] if deployment fails.
     pub fn deploy(&self, action: DeployAction) -> Result<()> {
         self.deployer.deploy_with(RootDeployment, &self.entry, action)
     }
 
+    /// Current branch of root repository.
+    ///
+    /// Uses lossy UTF-8 variation of branch pointed to by HEAD.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] if branch could not be determined.
     pub fn current_branch(&self) -> Result<String> {
         self.entry.current_branch()
     }
 
+    /// Extract cluster definition from root.
+    ///
+    /// Will first look at `.config/ocd/cluster.toml`, then `cluster.toml` in tree structure.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] if cluster could not be extracted.
+    /// - Return [`Error::Toml`] if cluster contains invalid formatting.
     pub(crate) fn extract_cluster_file(&self) -> Result<Cluster> {
         if self.entry.is_empty()? {
             warn!("Root is empty, no cluster.toml file to extract");
@@ -114,6 +158,14 @@ impl Root {
         Ok(cluster)
     }
 
+    /// Nuke entire cluster from existence.
+    ///
+    /// Undeploys root and all nodes, then deletes the configuration directory
+    /// and repository store itself.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Io`] if deployment fails or directory deletion fails.
     #[instrument(skip(self), level = "debug")]
     pub fn nuke(&self) -> Result<()> {
         let cluster: Cluster = self.extract_cluster_file()?;
@@ -153,10 +205,7 @@ impl Node {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] for any failure internal repository failure.
-    /// - Return [`Error::Git2FileNotFound`] if cluster definition does not exist in root.
-    /// - Return [`Error::SyscallInteractive`] for deployment failure.
-    /// - Return [`Error::Io`] for failed writes to sparse checkout file.
+    /// - Return [`Error::Git2`] if repository failed to clone.
     pub fn new_clone(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         let bar = ProgressBar::no_length();
         let entry = RepoEntry::builder(name.as_ref())?
@@ -191,9 +240,11 @@ impl Node {
 
     /// Construct new node by opening existing node repository.
     ///
+    /// Will clone node repository if it does not already exist.
+    ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] if repository could not be opened.
+    /// - Return [`Error::Git2`] if repository could not be opened or cloned.
     pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         let entry = if data_dir()?.join(name.as_ref()).exists() {
             RepoEntry::builder(name.as_ref())?
@@ -274,7 +325,7 @@ impl MultiNodeClone {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::NoWayData`] if data directory path cannot be determined.
+    ///- Will fail if [`RepoEntryBuilder`] could not be constructed for a given node entry.
     pub fn new(cluster: &Cluster, jobs: Option<usize>) -> Result<Self> {
         let multi_bar = MultiProgress::new();
         let mut nodes: Vec<RepoEntryBuilder> = Vec::new();
