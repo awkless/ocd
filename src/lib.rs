@@ -59,12 +59,6 @@ pub enum Error {
     #[error("Cannot determine path to home directory")]
     NoWayHome,
 
-    #[error("Cannot determine path to configuration directory")]
-    NoWayConfig,
-
-    #[error("Cannot determine path to data directory")]
-    NoWayData,
-
     #[error(transparent)]
     Toml(#[from] toml_edit::TomlError),
 
@@ -124,8 +118,6 @@ impl From<Error> for i32 {
     fn from(error: Error) -> Self {
         match error {
             Error::NoWayHome => exitcode::IOERR,
-            Error::NoWayConfig => exitcode::IOERR,
-            Error::NoWayData => exitcode::IOERR,
             Error::Toml(..) => exitcode::CONFIG,
             Error::DependencyNotFound { .. } => exitcode::CONFIG,
             Error::CircularDependencies { .. } => exitcode::CONFIG,
