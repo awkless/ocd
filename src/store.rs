@@ -20,12 +20,14 @@ use crate::{
 use auth_git2::{GitAuthenticator, Prompter};
 use futures::{stream, StreamExt};
 use git2::{
-    build::RepoBuilder, Config, FetchOptions, RemoteCallbacks, Repository, RepositoryInitOptions,
+    build::RepoBuilder, Config, FetchOptions, ObjectType, RemoteCallbacks, Repository,
+    RepositoryInitOptions,
 };
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use inquire::{Password, Text};
 use std::{
-    ffi::OsString,
+    collections::VecDeque,
+    ffi::{OsStr, OsString},
     fmt::Write as FmtWrite,
     fs::{remove_dir_all, File},
     io::Write as IoWrite,
@@ -166,6 +168,7 @@ impl Node {
             .clone(&bar)?;
         let mut deployer = RepoEntryDeployer::new(&entry);
         deployer.add_excluded(node.excluded.iter().flatten());
+        bar.finish_and_clear();
 
         Ok(Self { entry, deployer })
     }
@@ -192,8 +195,24 @@ impl Node {
     ///
     /// - Return [`Error::Git2`] if repository could not be opened.
     pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
-        let entry =
-            RepoEntry::builder(name.as_ref())?.deployment(node.deployment.clone()).open()?;
+        let entry = if data_dir()?.join(name.as_ref()).exists() {
+            RepoEntry::builder(name.as_ref())?
+                .url(&node.url)
+                .deployment(node.deployment.clone())
+                .open()?
+        } else {
+            let bar = ProgressBar::no_length();
+            let entry = RepoEntry::builder(name.as_ref())?
+                .url(&node.url)
+                .deployment(node.deployment.clone())
+                .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
+                    bar.clone(),
+                )))
+                .clone(&bar)?;
+            bar.finish_and_clear();
+            entry
+        };
+
         let mut deployer = RepoEntryDeployer::new(&entry);
         deployer.add_excluded(node.excluded.iter().flatten());
 
@@ -827,20 +846,13 @@ fn is_deployed(entry: &RepoEntry, excluded: &SparseCheckout, state: DeployState)
         return Ok(false);
     }
 
-    let worktree = match &entry.deployment {
+    let dir_alias = match &entry.deployment {
         DeploymentKind::Normal => return Ok(false),
-        DeploymentKind::BareAlias(worktree) => worktree,
+        DeploymentKind::BareAlias(dir_alias) => dir_alias,
     };
 
-    // Thank you Eric at https://www.hydrogen18.com/blog/list-all-files-git-repo-pygit2.html.
-    let mut entries = Vec::new();
-    let commit = entry.repository.head()?.peel_to_commit()?;
-    let tree = commit.tree()?;
-    for entry in tree.iter() {
-        if let Some(filename) = entry.name() {
-            entries.push(filename.to_string());
-        }
-    }
+    let mut entries: Vec<String> =
+        list_file_paths(entry)?.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
     if state == DeployState::WithoutExcluded {
         let excludes = glob_match(excluded.iter(), entries.iter());
@@ -848,13 +860,60 @@ fn is_deployed(entry: &RepoEntry, excluded: &SparseCheckout, state: DeployState)
     }
 
     for entry in entries {
-        let path = worktree.0.join(entry);
+        let path = dir_alias.0.join(entry);
         if !path.exists() {
             return Ok(false);
         }
     }
 
     Ok(true)
+}
+
+// Thank you Eric at https://www.hydrogen18.com/blog/list-all-files-git-repo-pygit2.html.
+fn list_file_paths(entry: &RepoEntry) -> Result<Vec<PathBuf>> {
+    let mut entries = Vec::new();
+    let commit = entry.repository.head()?.peel_to_commit()?;
+    let tree = commit.tree()?;
+    let mut trees_and_paths = VecDeque::new();
+    trees_and_paths.push_front((tree, PathBuf::new()));
+
+    // Iterate through all trees of repository entry, inserting full paths to each file blob in a
+    // given tree until queue is exhausted.
+    while let Some((tree, path)) = trees_and_paths.pop_front() {
+        for tree_entry in tree.iter() {
+            match tree_entry.kind() {
+                // Insert tree object into next iteration of queue...
+                Some(ObjectType::Tree) => {
+                    let next_tree = entry.repository.find_tree(tree_entry.id())?;
+                    let next_path = path.join(bytes_to_path(tree_entry.name_bytes()));
+                    trees_and_paths.push_front((next_tree, next_path));
+                }
+                // Insert filename with full path into path entry list...
+                Some(ObjectType::Blob) => {
+                    let full_path = path.join(bytes_to_path(tree_entry.name_bytes()));
+                    entries.push(full_path);
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    Ok(entries)
+}
+
+// Thanks from:
+//
+// https://github.com/rust-lang/git2-rs/blob/5bc3baa9694a94db2ca9cc256b5bce8a215f9013/
+// src/util.rs#L85
+#[cfg(unix)]
+fn bytes_to_path(bytes: &[u8]) -> &Path {
+    use std::os::unix::prelude::*;
+    Path::new(OsStr::from_bytes(bytes))
+}
+#[cfg(windows)]
+fn bytes_to_path(bytes: &[u8]) -> PathBuf {
+    use std::str;
+    Path::new(str::from_utf8(bytes).unwrap())
 }
 
 /// Variants of repository index deployment state.
