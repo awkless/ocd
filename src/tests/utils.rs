@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
-use crate::utils::*;
+use crate::glob_match;
 
 use simple_test_case::test_case;
 

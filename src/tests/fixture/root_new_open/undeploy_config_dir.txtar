@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 # SPDX-License-Identifier: MIT
 
+# `Root::new_open` will open and deploy to configuration directory for undeployed root.
+
 -- cluster.toml --
+dir_alias = "config_dir"
 excluded = ["LICENSE*", "README*"]
 
 -- LICENSE --

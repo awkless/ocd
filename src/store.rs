@@ -158,6 +158,15 @@ impl Root {
         Ok(cluster)
     }
 
+    /// Determine if root is currently deployed at specific state.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for any failure to determine deployment of root.
+    pub(crate) fn is_deployed(&self, state: DeployState) -> Result<bool> {
+        is_deployed(&self.entry, &self.deployer.excluded, state)
+    }
+
     /// Nuke entire cluster from existence.
     ///
     /// Undeploys root and all nodes, then deletes the configuration directory
@@ -189,6 +198,16 @@ impl Root {
         Ok(())
     }
 
+    /// Get full path to root's gitdir.
+    pub fn path(&self) -> &Path {
+        &self.entry.path()
+    }
+
+    /// Make interactive system call to user's Git binary.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if system call fails, or Git was given invalid arguments.
     pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
         self.entry.gitcall_interactive(args)
     }

@@ -45,7 +45,6 @@ pub(crate) mod cmd;
 pub(crate) mod fs;
 pub(crate) mod model;
 pub(crate) mod store;
-pub(crate) mod utils;
 
 #[doc(hidden)]
 pub use cmd::Ocd;

@@ -1,8 +1,10 @@
 # SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 # SPDX-License-Identifier: MIT
 
+# `Root::new_open` will open and deploy to home directory for deployed root.
+git --git-dir .local/share/ocd --work-dir . checkout
+
 -- cluster.toml --
-dir_alias = "$HOME"
 excluded = ["LICENSE*", "README*"]
 
 -- LICENSE --
