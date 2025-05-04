@@ -8,9 +8,10 @@
 
 use crate::{
     fs::{config_dir, data_dir, home_dir, load, save, Existence},
+    glob_match,
     model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
     store::{DeployAction, MultiNodeClone, Node, Root, TablizeCluster},
-    Error, Result, glob_match,
+    Error, Result,
 };
 
 use clap::{Parser, Subcommand};
