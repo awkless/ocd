@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+
+git --git-dir .local/share/ocd/root --work-dir .config/ocd checkout
+git --git-dir .local/share/ocd/sh --work-dir . checkout
+
+-- root/cluster.toml --
+[nodes.sh]
+deployment = "bare_alias"
+url = "some/url"
+
+[nodes.vim]
+deployment = "bare_alias"
+url = "some/url"
+
+[nodes.dwm]
+deployment = "normal"
+url = "some/url"
+
+-- sh/.shrc --
+case $- in
+  *i*) ;;
+  *) exit ;;
+esac
+
+set -o vi
+
+-- vim/.vimrc --
+set textwidth=80
+set shiftwidth=4
+
+-- dwm/dwm.c --
+int
+main(int argc, char **argv) {
+	printf("Hello world, from DWM!");
+	return 0;
+}

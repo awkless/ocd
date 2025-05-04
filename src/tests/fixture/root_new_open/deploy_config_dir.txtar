@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 # `Root::new_open` will open and deploy to configuration directory for deployed root.
-git --git-dir .local/share/ocd --work-dir .config/ocd checkout
+git --git-dir .local/share/ocd/root --work-dir .config/ocd checkout
 
 -- cluster.toml --
 dir_alias = "config_dir"

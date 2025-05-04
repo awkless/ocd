@@ -12,8 +12,9 @@
 
 use crate::{
     fs::{config_dir, data_dir},
+    glob_match,
     model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
-    Error, Result, glob_match,
+    Error, Result,
 };
 
 use auth_git2::{GitAuthenticator, Prompter};
@@ -31,9 +32,9 @@ use std::{
     fs::{remove_dir_all, File},
     io::Write as IoWrite,
     path::{Path, PathBuf},
+    process::Command,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
-    process::Command,
 };
 use tracing::{debug, info, instrument, warn};
 
@@ -314,7 +315,14 @@ impl Node {
     ///
     /// - Will fail if deployment action fails for whatever reason.
     pub fn deploy(&self, action: DeployAction) -> Result<()> {
-        self.deployer.deploy_with(BareAliasDeployment, &self.entry, action)
+        match self.entry.deployment {
+            DeploymentKind::Normal => {
+                self.deployer.deploy_with(NormalDeployment, &self.entry, action)
+            }
+            DeploymentKind::BareAlias(..) => {
+                self.deployer.deploy_with(BareAliasDeployment, &self.entry, action)
+            }
+        }
     }
 
     /// Make interactive call to Git binary.

@@ -30,7 +30,6 @@ impl GitFixture {
         let mut config = repo.config()?;
         config.set_str("user.name", "John Doe")?;
         config.set_str("user.email", "john@doe.com")?;
-        println!("{}", repo.path().display());
 
         Ok(Self { repo })
     }
@@ -107,16 +106,4 @@ impl GitKind {
             GitKind::Bare => true,
         }
     }
-}
-
-/// File mode variants.
-#[repr(i32)]
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) enum FileMode {
-    /// Normal file, i.e., -rw-r--r--.
-    #[default]
-    NormalFile = 0o100644,
-
-    /// Normal directory, i.e., dr--------.
-    Directory = 0o040000,
 }

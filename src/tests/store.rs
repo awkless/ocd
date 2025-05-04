@@ -11,6 +11,7 @@ use run_script::run_script;
 use sealed_test::prelude::*;
 use simple_test_case::dir_cases;
 use simple_txtar::Archive;
+use std::path::PathBuf;
 
 #[sealed_test(env = [("XDG_DATA_HOME", "store")])]
 fn smoke_root_new_init() -> Result<()> {
@@ -63,6 +64,40 @@ fn smoke_root_new_clone(_: &str, contents: &str) -> Result<()> {
     let root = Root::new_clone("forge/remote_root.git")?;
     assert!(root.path().exists());
     assert!(root.is_deployed(DeployState::WithoutExcluded)?);
+
+    Ok(())
+}
+
+#[dir_cases("src/tests/fixture/root_nuke")]
+#[sealed_test(env = [
+    ("XDG_CONFIG_HOME", ".config/ocd"),
+    ("XDG_DATA_HOME", ".local/share/ocd/root"),
+])]
+fn smoke_root_nuke(_: &str, contents: &str) -> Result<()> {
+    let pwd = std::env::current_dir()?;
+    std::fs::create_dir_all(".config/ocd")?;
+    std::env::set_var("HOME", &pwd);
+
+    let txtar = Archive::from(contents);
+    let fixture = txtar.get("root/cluster.toml").unwrap();
+    GitFixture::new(".local/share/ocd/root", GitKind::Bare)?
+        .stage_and_commit("cluster.toml", &fixture.content)?;
+    let fixture = txtar.get("sh/.shrc").unwrap();
+    GitFixture::new(".local/share/ocd/sh", GitKind::Bare)?
+        .stage_and_commit(".shrc", &fixture.content)?;
+    let fixture = txtar.get("vim/.vimrc").unwrap();
+    GitFixture::new(".local/share/ocd/vim", GitKind::Bare)?
+        .stage_and_commit(".vimrc", &fixture.content)?;
+    let fixture = txtar.get("dwm/dwm.c").unwrap();
+    GitFixture::new(".local/share/ocd/dwm", GitKind::Normal)?
+        .stage_and_commit("dwm.c", &fixture.content)?;
+    run_script!(&txtar.comment())?;
+
+    let root = Root::new_open()?;
+    root.nuke()?;
+
+    assert!(!PathBuf::from(".config/ocd").exists());
+    assert!(!PathBuf::from(".local/share/ocd/root").exists());
 
     Ok(())
 }
