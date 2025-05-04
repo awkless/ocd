@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    store::{DeployState, Root},
+    model::{NodeEntry, DeploymentKind, DirAlias},
+    store::{DeployState, Root, Node},
     tests::{GitFixture, GitKind},
     Result,
 };
@@ -98,6 +99,29 @@ fn smoke_root_nuke(_: &str, contents: &str) -> Result<()> {
 
     assert!(!PathBuf::from(".config/ocd").exists());
     assert!(!PathBuf::from(".local/share/ocd/root").exists());
+
+    Ok(())
+}
+
+#[sealed_test(env = [("XDG_DATA_HOME", "store")])]
+fn smoke_node_new_init() -> Result<()> {
+    std::env::set_var("HOME", std::env::current_dir()?);
+
+    let entry = NodeEntry {
+        deployment: DeploymentKind::Normal,
+        ..Default::default()
+    };
+    let node = Node::new_init("dwm", &entry)?;
+    assert!(node.path().exists());
+    assert!(!node.is_bare_alias());
+
+    let entry = NodeEntry {
+        deployment: DeploymentKind::BareAlias(DirAlias::new("some/path")),
+        ..Default::default()
+    };
+    let node = Node::new_init("vim", &entry)?;
+    assert!(node.path().exists());
+    assert!(node.is_bare_alias());
 
     Ok(())
 }

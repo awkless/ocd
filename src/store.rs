@@ -300,6 +300,11 @@ impl Node {
         self.entry.name()
     }
 
+    /// Determine if node is bare-alias.
+    pub fn is_bare_alias(&self) -> bool {
+        self.entry.is_bare_alias()
+    }
+
     /// Get current name of branch.
     ///
     /// # Errors
