@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{
-    model::{NodeEntry, DeploymentKind, DirAlias},
-    store::{DeployState, Root, Node},
+    model::{DeploymentKind, DirAlias, NodeEntry},
+    store::{DeployState, Node, Root},
     tests::{GitFixture, GitKind},
     Result,
 };
@@ -107,10 +107,7 @@ fn smoke_root_nuke(_: &str, contents: &str) -> Result<()> {
 fn smoke_node_new_init() -> Result<()> {
     std::env::set_var("HOME", std::env::current_dir()?);
 
-    let entry = NodeEntry {
-        deployment: DeploymentKind::Normal,
-        ..Default::default()
-    };
+    let entry = NodeEntry { deployment: DeploymentKind::Normal, ..Default::default() };
     let node = Node::new_init("dwm", &entry)?;
     assert!(node.path().exists());
     assert!(!node.is_bare_alias());
@@ -122,6 +119,33 @@ fn smoke_node_new_init() -> Result<()> {
     let node = Node::new_init("vim", &entry)?;
     assert!(node.path().exists());
     assert!(node.is_bare_alias());
+
+    Ok(())
+}
+
+#[dir_cases("src/tests/fixture/node_new_open")]
+#[sealed_test(env = [
+    ("XDG_CONFIG_HOME", ".config/ocd"),
+    ("XDG_DATA_HOME", ".local/share/ocd/root"),
+])]
+fn smoke_node_new_open(_: &str, contents: &str) -> Result<()> {
+    let pwd = std::env::current_dir()?;
+    std::fs::create_dir_all(".config/ocd")?;
+    std::env::set_var("HOME", &pwd);
+
+    let txtar = Archive::from(contents);
+
+    let fixture = txtar.get("dwm/dwm.c").unwrap();
+    GitFixture::new(".local/share/ocd/dwm", GitKind::Normal)?
+        .stage_and_commit("dwm.c", &fixture.content)?;
+    let node = Node::new_open("dwm", &NodeEntry { ..Default::default() })?;
+    assert!(node.path().exists());
+
+    let fixture = txtar.get("sh/.shrc").unwrap();
+    GitFixture::new("forge/sh.git", GitKind::Bare)?.stage_and_commit(".shrc", &fixture.content)?;
+    let node =
+        Node::new_open("sh", &NodeEntry { url: "forge/sh.git".into(), ..Default::default() })?;
+    assert!(node.path().exists());
 
     Ok(())
 }

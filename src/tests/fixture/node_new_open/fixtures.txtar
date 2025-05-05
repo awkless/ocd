@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+
+-- sh/.shrc --
+case $- in
+  *i*) ;;
+  *) exit ;;
+esac
+
+set -o vi
+
+-- dwm/dwm.c --
+int
+main(int argc, char **argv) {
+	printf("Hello world, from DWM!");
+	return 0;
+}

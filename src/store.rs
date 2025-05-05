@@ -201,7 +201,7 @@ impl Root {
 
     /// Get full path to root's gitdir.
     pub fn path(&self) -> &Path {
-        &self.entry.path()
+        self.entry.path()
     }
 
     /// Make interactive system call to user's Git binary.
@@ -303,6 +303,15 @@ impl Node {
     /// Determine if node is bare-alias.
     pub fn is_bare_alias(&self) -> bool {
         self.entry.is_bare_alias()
+    }
+
+    /// Determine if node is currently deployed at specific state.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for any failure to determine deployment of node.
+    pub(crate) fn is_deployed(&self, state: DeployState) -> Result<bool> {
+        is_deployed(&self.entry, &self.deployer.excluded, state)
     }
 
     /// Get current name of branch.
