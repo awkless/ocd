@@ -5,6 +5,52 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.6.2] - 2025-05-05
+
+### Added
+
+- Add `crate::store::RepoEntry` to manage common functionality needed to create
+  and maintain repository entries in repository store.
+- Add `crate::store::Deployment` to make it easier to implement deployment
+  strategies for various entries in repository store.
+- Add `crate::store::NormalDeployment` to manage deployment for normal
+  repository entries.
+- Add `crate::store::BareAliasDeployment` to manage deployment for bare-alias
+  repository entries.
+- Add `crate::store::RootDeployment` to manage deployment for root repository
+  entry.
+- Add test cases for public facing code in `crate::store` module using txtar
+  format to construct repository fixtures to operate with.
+
+### Changed
+
+- Massively refactor `crate::store::Git` into smaller more self contained pieces
+  of code. This was done to prevent `crate::store::Git` from becoming a
+  __god class__.
+- User is now limited to only deploying their root repository to two locations:
+  OCD's configuration directory (default) or their home directory. See __fixed__
+  section for why.
+
+### Fixed
+
+- Allowing user to deploy their root anywhere they want in their home directory
+  was a mistake. This would allow the user to define a cluster that violates the
+  expected structure OCD needs in order to operate on that cluster, e.g.,
+  deployment to `$HOME/.local/share/ocd` (repository store) was possible and
+  made no sense.  Thus, to fix this issue, and to make it easier to locate the
+  cluster definition, the user is now limited to only two locations for root
+  repository deployment: OCD's expected configuration directory, or their home
+  directory.
+- The `deploy` and `undeploy` commands now clone node repositories if they do
+  not already exist in repository store.
+- Fixed repository deployment check `crate::store::is_deployed` by finally
+  correctly traversing the tree structure of a given repository entry. Before,
+  this check would only iterate the top-level tree, meaning that top-level files
+  in a given repository would only be matched. This would cause the `deploy`
+  or `undeploy` commands to not properly detect when a given repository was
+  deployed, and made matching nested excluded files essentially impossible,
+  e.g., a sparsity rule like "dir1/dir2/dir3/\*" would have never matched.
+
 ## [0.6.1] - 2025-04-25
 
 ### Added
@@ -135,6 +181,7 @@ SPDX-License-Identifier: MIT
 - Add CC0-1.0 license.
 - Add MIT license.
 
+[0.6.2]: https://github.com/awkless/ocd/tag/v0.6.2
 [0.6.1]: https://github.com/awkless/ocd/tag/v0.6.1
 [0.6.0]: https://github.com/awkless/ocd/tag/v0.6.0
 [0.5.0]: https://github.com/awkless/ocd/tag/v0.5.0
