@@ -146,10 +146,12 @@ impl Root {
 
         let commit = self.entry.repository.head()?.peel_to_commit()?;
         let tree = commit.tree()?;
-        let blob = if let Some(entry) = tree.get_name(".config/ocd/cluster.toml") {
+        let blob = if let Some(entry) = tree.get_name("cluster.toml") {
             entry.to_object(&self.entry.repository)?.peel_to_blob()?
         } else {
-            let entry = tree.get_name("cluster.toml").ok_or(Error::NoClusterFile)?;
+            let entry = tree
+                .get_path(PathBuf::from(".config/ocd/cluster.toml").as_path())
+                .map_err(|_| Error::NoClusterFile)?;
             entry.to_object(&self.entry.repository)?.peel_to_blob()?
         };
 

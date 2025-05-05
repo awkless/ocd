@@ -3,7 +3,7 @@
 
 # `Root::new_open` will open and deploy to home directory for for undeployed root.
 
--- cluster.toml --
+-- .config/ocd/cluster.toml --
 dir_alias = "home_dir"
 excluded = ["LICENSE*", "README*"]
 

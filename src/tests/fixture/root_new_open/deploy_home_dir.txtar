@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 
 # `Root::new_open` will open and deploy to home directory for deployed root.
-git --git-dir .local/share/ocd/root --work-dir . checkout
+git --git-dir "$(pwd)/.local/share/ocd/root" --work-dir "$(pwd)" checkout
 
--- cluster.toml --
+-- .config/ocd/cluster.toml --
+dir_alias = "home_dir"
 excluded = ["LICENSE*", "README*"]
 
 -- LICENSE --
