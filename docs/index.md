@@ -11,8 +11,8 @@ SPDX-License-Identifier: MIT
   Organize current dotfiles!
 </h3>
 
-<a href="usage">
-  <button style="left-margin: 50%; right-margin: 50%; font-size: 20px;">
+<a style="margin-left: 50%; margin-right: 50%;" href="usage">
+  <button>
     Get Started
   </button>
 </a>
@@ -30,8 +30,8 @@ offering finer control over their configuration across multiple machines.
 
 ## Dev Log
 
-{% for post in site.posts %}
-  <h3><a href="{{ post.url }}">{{ post.title }}</a></h3>
+{% for post in page.posts %}
+  <h3><a style="padding: 0px;" href="{{ post.url }}">{{ post.title }}</a></h3>
   <small>
     <strong>
       {{ post.date | date: "%B %e, %Y" }}
