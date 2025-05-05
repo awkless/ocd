@@ -541,6 +541,10 @@ impl<'cluster> TablizeCluster<'cluster> {
     }
 }
 
+/// Entry representation of repository store.
+///
+/// Provides basic routines to create and manage repository entries in repository store of user's
+/// cluster.
 pub(crate) struct RepoEntry {
     name: String,
     repository: Repository,
@@ -549,14 +553,23 @@ pub(crate) struct RepoEntry {
 }
 
 impl RepoEntry {
+    /// Use builder to construct new repository entry.
     pub(crate) fn builder(name: impl Into<String>) -> Result<RepoEntryBuilder> {
         RepoEntryBuilder::new(name)
     }
 
+    /// Set deployment type for repository entry.
     pub(crate) fn set_deployment(&mut self, kind: DeploymentKind) {
         self.deployment = kind;
     }
 
+    /// Check if repository entry is empty.
+    ///
+    /// A repository with no commits is considered to be empty.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if revwalk can not be performed.
     pub(crate) fn is_empty(&self) -> Result<bool> {
         match self.repository.head() {
             Ok(_) => {
@@ -574,25 +587,42 @@ impl RepoEntry {
         }
     }
 
+    /// Check if repository is bare-alias.
     pub(crate) fn is_bare_alias(&self) -> bool {
         self.repository.is_bare() && self.deployment.is_bare()
     }
 
+    /// Name of repository entry.
     pub(crate) fn name(&self) -> &str {
         &self.name
     }
 
+    /// Absolute path to repository entry's gitdir.
     pub(crate) fn path(&self) -> &Path {
         self.repository.path()
     }
 
+    /// Get name of current branch pointed to by HEAD.
+    ///
+    /// Returns current branch in lossy UTF-8 form.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if HEAD connot be determined.
     pub(crate) fn current_branch(&self) -> Result<String> {
         let shorthand = self.repository.head()?.shorthand_bytes().to_vec();
 
         Ok(String::from_utf8_lossy(shorthand.as_slice()).into_owned())
     }
 
-    #[instrument(skip(self, args))]
+    /// Perform non-interactive call to user's Git binary.
+    ///
+    /// Pipes stdout and stderr into a string for further manipulation.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if call to Git binary fails, or Git binary was given invalid arguments.
+    #[instrument(skip(self, args), level = "debug")]
     pub(crate) fn gitcall_non_interactive(
         &self,
         args: impl IntoIterator<Item = impl Into<OsString>>,
@@ -602,7 +632,15 @@ impl RepoEntry {
         syscall_non_interactive("git", args)
     }
 
-    #[instrument(skip(self, args))]
+    /// Perform interactive call to user's Git binary.
+    ///
+    /// Inherits user's shell environment, allowing for Git to prompt user for information
+    /// interactively.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if call to Git binary fails, or Git binary was given invalid arguments.
+    #[instrument(skip(self, args), level = "debug")]
     pub(crate) fn gitcall_interactive(
         &self,
         args: impl IntoIterator<Item = impl Into<OsString>>,
@@ -642,6 +680,7 @@ impl std::fmt::Debug for RepoEntry {
     }
 }
 
+/// Builder for [`RepoEntry`].
 #[derive(Default, Debug)]
 pub(crate) struct RepoEntryBuilder {
     name: String,
@@ -652,6 +691,7 @@ pub(crate) struct RepoEntryBuilder {
 }
 
 impl RepoEntryBuilder {
+    /// Construct new builder.
     pub(crate) fn new(name: impl Into<String>) -> Result<Self> {
         let name = name.into();
         let path = data_dir()?.join(&name);
@@ -659,11 +699,13 @@ impl RepoEntryBuilder {
         Ok(Self { name, path, ..Default::default() })
     }
 
+    /// Set deployment kind for repository entry.
     pub(crate) fn deployment(mut self, kind: DeploymentKind) -> Self {
         self.deployment = kind;
         self
     }
 
+    /// Set URL to clone from for repository entry.
     pub(crate) fn url(mut self, url: impl Into<String>) -> Self {
         self.url = url.into();
         self
@@ -678,6 +720,16 @@ impl RepoEntryBuilder {
         self
     }
 
+    /// Clone repository entry from URL.
+    ///
+    /// Will show pretty progress bar of how long it is taking to perform the clone. Will also
+    /// prompt the user for authentication if needed, which may pause any progress bars that are
+    /// active.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if given invalid URL, invalid credentials, or any other reason that may cause the
+    /// clone to fail.
     pub(crate) fn clone(self, bar: &ProgressBar) -> Result<RepoEntry> {
         let style = ProgressStyle::with_template(
             "{elapsed_precise:.green}  {msg:<50}  [{wide_bar:.yellow/blue}]",
@@ -725,6 +777,11 @@ impl RepoEntryBuilder {
         })
     }
 
+    /// Initialize new repository entry.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for failure to initialize new repository.
     pub(crate) fn init(self) -> Result<RepoEntry> {
         let mut opts = RepositoryInitOptions::new();
         opts.bare(self.deployment.is_bare());
@@ -744,6 +801,11 @@ impl RepoEntryBuilder {
         })
     }
 
+    /// Open existing repository entry.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for failure to open repository entry.
     pub(crate) fn open(self) -> Result<RepoEntry> {
         let repository = Repository::open(&self.path)?;
 
@@ -756,6 +818,7 @@ impl RepoEntryBuilder {
     }
 }
 
+/// Strategy for repository deployment.
 pub(crate) trait Deployment {
     fn deploy_action(
         &self,
@@ -765,11 +828,15 @@ pub(crate) trait Deployment {
     ) -> Result<()>;
 }
 
+/// Handler for repository deployment strategies.
 pub(crate) struct RepoEntryDeployer {
     excluded: SparseCheckout,
 }
 
 impl RepoEntryDeployer {
+    /// Construct new repository entry deployer.
+    ///
+    /// Sets sparse path based on given repository entry.
     pub(crate) fn new(entry: &RepoEntry) -> Self {
         let mut excluded = SparseCheckout::new();
         excluded.set_sparse_path(entry.path());
@@ -777,10 +844,17 @@ impl RepoEntryDeployer {
         Self { excluded }
     }
 
+    /// Add exclusion rules for deployment.
     pub(crate) fn add_excluded(&mut self, rules: impl IntoIterator<Item = impl Into<String>>) {
         self.excluded.add_exclusions(rules);
     }
 
+    /// Deploy with given strategy.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if sparse-check fails with exclusion rules, or deployment strategy itself fails
+    /// for whatever reason.
     pub(crate) fn deploy_with(
         &self,
         deployer: impl Deployment,
@@ -791,25 +865,15 @@ impl RepoEntryDeployer {
     }
 }
 
-pub(crate) struct NormalDeployment;
-
-impl Deployment for NormalDeployment {
-    fn deploy_action(
-        &self,
-        entry: &RepoEntry,
-        _excluded: &SparseCheckout,
-        _action: DeployAction,
-    ) -> Result<()> {
-        if entry.is_bare_alias() {
-            return Err(Error::NormalMixup { name: entry.name().into() });
-        }
-
-        info!("Repository {:?} is normal, no deployment needed", entry.name());
-
-        Ok(())
-    }
-}
-
+/// Deployment strategy for root repository.
+///
+/// ## Rules
+///
+/// 1. Root must always be deployed.
+/// 2. Root cannot be undeployed.
+/// 3. Root is always bare-alias.
+/// 4. Excluded files can be either deployed or undeployed.
+///     1. Excluded files are not deployed by default.
 pub(crate) struct RootDeployment;
 
 impl Deployment for RootDeployment {
@@ -869,6 +933,39 @@ impl Deployment for RootDeployment {
     }
 }
 
+/// Deployment strategy for normal repositories.
+///
+/// ## Rules
+///
+/// 1. Normal repositories cannot be deployed.
+/// 3. Make sure normal repository is actually defined to be normal.
+pub(crate) struct NormalDeployment;
+
+impl Deployment for NormalDeployment {
+    fn deploy_action(
+        &self,
+        entry: &RepoEntry,
+        _excluded: &SparseCheckout,
+        _action: DeployAction,
+    ) -> Result<()> {
+        if entry.is_bare_alias() {
+            return Err(Error::NormalMixup { name: entry.name().into() });
+        }
+
+        info!("Repository {:?} is normal, no deployment needed", entry.name());
+
+        Ok(())
+    }
+}
+
+/// Deployment strategy for bare-alias repositories.
+///
+/// ## Rules
+///
+/// 1. Bare-alias repositories can either be deployed or undeployed.
+///     1. Excluded files are not included unless specified with deployment by default.
+/// 2. Make sure bare-alias repository is actually defined to be bare-alias.
+/// 3. Skip deployment if bare-alias repository is already deployed.
 pub(crate) struct BareAliasDeployment;
 
 impl Deployment for BareAliasDeployment {
