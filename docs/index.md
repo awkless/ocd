@@ -11,6 +11,12 @@ SPDX-License-Identifier: MIT
   Organize current dotfiles!
 </h3>
 
+<a href="usage">
+  <button style="left-margin: 50%; right-margin: 50%; font-size: 20px;">
+    Get Started
+  </button>
+</a>
+
 ## Description
 
 The OCD tool is a dotfile management tool that empowers the user to control the
@@ -22,14 +28,6 @@ of the changes they make to their dotfile configurations. Through their cluster,
 the user can pick and choose which repositories get deployed on their machine,
 offering finer control over their configuration across multiple machines.
 
-## Acknowledgements
-
-- Arch Linux Wiki page about [dotfiles][archwiki-dotfiles], which provided a
-  great introduction about using Git to manage dotfiles using the bare-alias
-  technique.
-- Richard Hartmann's [vcsh][vcsh-git] and [myrepos][mr-git] tools, which
-  generally provided the overall look and feel of OCD's command set.
-
 ## Dev Log
 
 {% for post in site.posts %}
@@ -40,6 +38,14 @@ offering finer control over their configuration across multiple machines.
     </strong>
   </small>
 {% endfor %}
+
+## Acknowledgements
+
+- Arch Linux Wiki page about [dotfiles][archwiki-dotfiles], which provided a
+  great introduction about using Git to manage dotfiles using the bare-alias
+  technique.
+- Richard Hartmann's [vcsh][vcsh-git] and [myrepos][mr-git] tools, which
+  generally provided the overall look and feel of OCD's command set.
 
 [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles
 [vcsh-git]: https://github.com/RichiH/vcsh
