@@ -132,7 +132,7 @@ impl Cluster {
         results.into_iter().collect::<_>()
     }
 
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     fn acyclic_check(&self) -> Result<()> {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
         let mut queue: VecDeque<String> = VecDeque::new();

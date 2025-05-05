@@ -249,7 +249,7 @@ impl Node {
     /// # Errors
     ///
     /// - Return [`Error::Git2`] if repository could not be initialized.
-    #[instrument(skip(name, node))]
+    #[instrument(skip(name, node), level = "debug")]
     pub fn new_init(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         info!("Initialize node repository {:?}", name.as_ref());
         let entry =
@@ -493,7 +493,7 @@ impl<'cluster> TablizeCluster<'cluster> {
     /// - Will fail if a given root or node entry does not exist.
     /// - Will fail if deployment status cannot be obtained.
     /// - Will fail if current branch cannot be obtained.
-    #[instrument(skip(self))]
+    #[instrument(skip(self), level = "debug")]
     pub fn fancy(&self) -> Result<()> {
         let mut builder = tabled::builder::Builder::new();
         let state = if is_deployed(
@@ -1152,7 +1152,7 @@ impl ProgressBarAuthenticator {
 }
 
 impl Prompter for ProgressBarAuthenticator {
-    #[instrument(skip(self, url, _git_config))]
+    #[instrument(skip(self, url, _git_config), level = "debug")]
     fn prompt_username_password(
         &mut self,
         url: &str,
@@ -1171,7 +1171,7 @@ impl Prompter for ProgressBarAuthenticator {
         }
     }
 
-    #[instrument(skip(self, username, url, _git_config))]
+    #[instrument(skip(self, username, url, _git_config), level = "debug")]
     fn prompt_password(
         &mut self,
         username: &str,
@@ -1190,7 +1190,7 @@ impl Prompter for ProgressBarAuthenticator {
         }
     }
 
-    #[instrument(skip(self, private_key_path, _git_config))]
+    #[instrument(skip(self, private_key_path, _git_config), level = "debug")]
     fn prompt_ssh_key_passphrase(
         &mut self,
         private_key_path: &Path,

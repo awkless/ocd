@@ -223,7 +223,7 @@ pub fn run_init(opts: InitOptions) -> Result<()> {
     Ok(())
 }
 
-#[instrument(skip(opts))]
+#[instrument(skip(opts), level = "debug")]
 pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
     let root = Root::new_open()?;
     let cluster: Cluster = load("cluster.toml", Existence::Required)?;
@@ -309,7 +309,7 @@ fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
     Ok(())
 }
 
-#[instrument(skip(opts))]
+#[instrument(skip(opts), level = "debug")]
 fn run_remove(mut opts: RemoveOptions) -> Result<()> {
     let mut cluster: Cluster = load("cluster.toml", Existence::Required)?;
 
@@ -342,7 +342,6 @@ fn run_remove(mut opts: RemoveOptions) -> Result<()> {
     Ok(())
 }
 
-#[instrument(skip(opts))]
 fn run_list(opts: ListOptions) -> Result<()> {
     let root = Root::new_open()?;
     let cluster: Cluster = load("cluster.toml", Existence::Required)?;
