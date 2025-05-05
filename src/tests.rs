@@ -31,6 +31,11 @@ impl GitFixture {
         config.set_str("user.name", "John Doe")?;
         config.set_str("user.email", "john@doe.com")?;
 
+        if kind == GitKind::Bare {
+            config.set_str("status.showUntrackedFiles", "no")?;
+            config.set_str("core.sparseCheckout", "true")?;
+        }
+
         Ok(Self { repo })
     }
 
