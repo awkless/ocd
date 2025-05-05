@@ -3,7 +3,7 @@
 
 use crate::{
     model::{DeploymentKind, DirAlias, NodeEntry},
-    store::{DeployState, Node, Root},
+    store::{DeployAction, DeployState, Node, Root},
     tests::{GitFixture, GitKind},
     Result,
 };
@@ -26,7 +26,7 @@ fn smoke_root_new_init() -> Result<()> {
 #[dir_cases("src/tests/fixture/root_new_open")]
 #[sealed_test(env = [
     ("XDG_CONFIG_HOME", ".config/ocd"),
-    ("XDG_DATA_HOME", ".local/share/ocd/root"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
 ])]
 fn smoke_root_new_open(_: &str, contents: &str) -> Result<()> {
     let pwd = std::env::current_dir()?;
@@ -49,7 +49,7 @@ fn smoke_root_new_open(_: &str, contents: &str) -> Result<()> {
 #[dir_cases("src/tests/fixture/root_new_clone")]
 #[sealed_test(env = [
     ("XDG_CONFIG_HOME", ".config/ocd"),
-    ("XDG_DATA_HOME", ".local/share/ocd/root"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
 ])]
 fn smoke_root_new_clone(_: &str, contents: &str) -> Result<()> {
     let pwd = std::env::current_dir()?;
@@ -72,7 +72,7 @@ fn smoke_root_new_clone(_: &str, contents: &str) -> Result<()> {
 #[dir_cases("src/tests/fixture/root_nuke")]
 #[sealed_test(env = [
     ("XDG_CONFIG_HOME", ".config/ocd"),
-    ("XDG_DATA_HOME", ".local/share/ocd/root"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
 ])]
 fn smoke_root_nuke(_: &str, contents: &str) -> Result<()> {
     let pwd = std::env::current_dir()?;
@@ -126,7 +126,7 @@ fn smoke_node_new_init() -> Result<()> {
 #[dir_cases("src/tests/fixture/node_new_open")]
 #[sealed_test(env = [
     ("XDG_CONFIG_HOME", ".config/ocd"),
-    ("XDG_DATA_HOME", ".local/share/ocd/root"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
 ])]
 fn smoke_node_new_open(_: &str, contents: &str) -> Result<()> {
     let pwd = std::env::current_dir()?;
@@ -146,6 +146,45 @@ fn smoke_node_new_open(_: &str, contents: &str) -> Result<()> {
     let node =
         Node::new_open("sh", &NodeEntry { url: "forge/sh.git".into(), ..Default::default() })?;
     assert!(node.path().exists());
+
+    Ok(())
+}
+
+#[dir_cases("src/tests/fixture/node_deploy")]
+#[sealed_test(env = [
+    ("XDG_CONFIG_HOME", ".config/ocd"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
+])]
+fn smoke_node_deploy(_: &str, contents: &str) -> Result<()> {
+    let pwd = std::env::current_dir()?;
+    std::fs::create_dir_all(".config/ocd")?;
+    std::env::set_var("HOME", &pwd);
+
+    let txtar = Archive::from(contents);
+    let git = GitFixture::new(".local/share/ocd/node", GitKind::Bare)?;
+    for file in txtar.iter() {
+        git.stage_and_commit(&file.name, &file.content)?;
+    }
+    run_script!(&txtar.comment())?;
+
+    let entry = NodeEntry {
+        deployment: DeploymentKind::BareAlias(DirAlias::new(&pwd)),
+        excluded: Some(vec!["README*".into(), "LICENSE*".into()]),
+        ..Default::default()
+    };
+    let node = Node::new_open("node", &entry)?;
+
+    node.deploy(DeployAction::Deploy)?;
+    assert!(node.is_deployed(DeployState::WithoutExcluded)?);
+
+    node.deploy(DeployAction::DeployAll)?;
+    assert!(node.is_deployed(DeployState::WithExcluded)?);
+
+    node.deploy(DeployAction::UndeployExcludes)?;
+    assert!(node.is_deployed(DeployState::WithoutExcluded)?);
+
+    node.deploy(DeployAction::Undeploy)?;
+    assert!(!node.is_deployed(DeployState::WithExcluded)?);
 
     Ok(())
 }

@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+
+git --git-dir "$(pwd)/.local/share/ocd/node" --work-tree "$(pwd)" checkout
+
+-- .profile --
+. .shrc
+
+-- .shrc --
+case $- in
+  *i*) ;;
+  *) exit ;;
+esac
+
+set -o vi
+
+-- README.md --
+Introduce newcomers.
+
+-- LICENSE --
+MIT license.
