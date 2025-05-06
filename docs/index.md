@@ -11,7 +11,7 @@ SPDX-License-Identifier: MIT
   Organize current dotfiles!
 </h3>
 
-<a style="margin-left: 50%; margin-right: 50%;" href="usage">
+<a style="margin-left: 42%;" href="usage">
   <button>
     Get Started
   </button>
@@ -30,14 +30,14 @@ offering finer control over their configuration across multiple machines.
 
 ## Dev Log
 
-{% for post in page.posts %}
-  <h3><a style="padding: 0px;" href="{{ post.url }}">{{ post.title }}</a></h3>
-  <small>
-    <strong>
-      {{ post.date | date: "%B %e, %Y" }}
-    </strong>
-  </small>
+<ul>
+{% for post in site.posts %}
+<li>
+<a href="{{ site.baseurl }}{{ post.url }}">{{ post.title }}</a><br/>
+<small><strong>{{ post.date | date: "%B %e %Y" }}</strong></small>
+</li>
 {% endfor %}
+</ul>
 
 ## Acknowledgements
 
