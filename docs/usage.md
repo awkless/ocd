@@ -201,8 +201,7 @@ Sometimes your configurations can get very large and complex. OCD focuses on
 providing modularity for your dotfiles. Thus, it is encouraged to break up your
 configurations into smaller pieces, i.e., smaller self-contained repositories,
 and fit them together like lego. One major feature that enables you to do this
-is the dependency system for node entries in your cluster
-definition/configuration file.
+is the dependency system for node entries in your cluster definition.
 
 As an example, lets assume you have configurations for both Dash and Bash shell
 environments in separate remote repositories. You also use a custom PS1 prompt
@@ -284,6 +283,75 @@ compose them together as you see fit.
 > Your root repository cannot take part in having dependencies, because it
 > already manages the cluster definition. This makes any nodes you define
 > inherit dependencies of the cluster itself by default.
+
+## File/Directory Exclusion
+
+Bare-alias deployment has the unique caveat that the entire contents of a
+repository gets deployed to the target directory alias. Sometimes, you may have
+certain files that you generally do not want to have deployed to avoid
+cluttering you home directory, e.g., readme files, license files, etc. OCD
+offers a way to prevent this with its file/directory exclusion feature. Say you
+have a node repository named "vim" with a readme that contains all the special
+keybindings you have configured for it as a reference guide. You generally do
+not want that readme file until you want to reference it, so you should do this
+in your cluster definition:
+
+```
+[nodes.vim]
+deployment = { kind = "bare_alias", dir_alias = "$HOME" }
+url = "https://github.com/user/vim.git"
+excluded = ["README*"]
+```
+
+Now when you use the `deploy` command, any file or directory that matches
+"README*" for the "vim" node will be excluded from deployment. You can bring
+back excluded files like so:
+
+```
+ocd deploy --with-excluded vim
+```
+
+You can also undeploy _only_ excluded files instead of the entire node like so:
+
+```
+ocd undeploy --only-excluded vim
+```
+
+Notice how the previous example showed the usage of a wildcard. You see, OCD
+uses Git's sparse-checkout feature to perform the exclusion. Sparse-checkout
+uses gitignore style rules for matching files and directories to include on
+checkout. These same patterns can be used in the `excluded` field to prevent
+certain files from being deployed. For example:
+
+```
+[nodes.ps1_polyglot]
+deployment = { kind = "bare_alias", dir_alias = "$HOME/.local/share" }
+url = "git@github.com:awkless/polyglot.git"
+excluded = [
+  ".github/",
+  "img/",
+  ".gitignore",
+  ".vimrc?local",
+  "**/LICENSE*",
+  "README*",
+  "[P-p]olyglot.plugin.zsh"
+  "!polyglot.sh",
+]
+```
+
+The root repository can also use the file/directory exclusion feature through a
+top-level `excluded` field:
+
+```
+# Do not deploy these in root repository...
+excluded = ["README*", "LICENSE*"]
+
+# Node stuffs...
+[nodes.vim]
+deployment = { kind = "bare_alias", dir_alias = "$HOME" }
+url = "https://github.com/user/vim.git"
+excluded = ["README*"]
+```
 
 [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles
 [git-scm]: https://git-scm.com/downloads
