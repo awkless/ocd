@@ -1,6 +1,7 @@
 ---
 layout: default
 title: OCD Usage Guide
+toc: true
 ---
 
 <!--
@@ -194,6 +195,66 @@ commands through OCD's CLI, or add new nodes by either using the `init`
 command, or modifying your cluster definition file and using the `deploy`
 command. Use OCD's `help` command for more information about its command-set,
 or continue reading the next sections for more advanced usage!
+
+## Multi Targeting
+
+You may want to issue the same command to multiple nodes in your cluster. OCD
+offers a way to do this by simply providing a comma-separated list of names:
+
+```
+ocd vim,sh,tmux pull origin main
+ocd deploy vim,sh,tmux
+ocd undeploy vim,sh,tmux
+ocd rm vim,sh,tmux
+```
+
+Even cooler, you can use unix-style matching patterns along with comma-separated
+lists to operate on multiple target nodes:
+
+```
+ocd "*" pull origin main
+ocd deploy "[V-v]im, t?ux"
+ocd undeploy "*sh*"
+ocd rm "?im, [S-s]h, t*ux"
+```
+
+> __NOTE__
+>
+> Make sure you always quote your targets whenever you decide to use unix-style
+> matching patterns. If you do not, then your shell may expand the patterns
+> instead of OCD, resulting in some very weird behavior.
+
+Finally, if you wish to operate on root, then you __must__ type out "root" in a
+given target listing. Unix-style matching patterns do not apply to root. Thus,
+
+```
+ocd "*" status
+```
+
+Will only get the status of nodes, excluding root by default. If you wanted to
+get status for _all_ entries in the cluster, then do the following:
+
+```
+ocd "root,*" status
+```
+
+This must always be done for any command that allows multi-targeting. Having
+root be separate was done to make it harder to shoot yourself in the foot.
+Especially, with the `rm` command, because if you type:
+
+```
+ocd rm *
+```
+
+This will only remove node entries, leaving root intact. However, the following:
+
+```
+ocd rm root
+```
+
+will cause OCD to prompt you about removing root. If you accept, then OCD will
+nuke your entire cluster by undeploying all nodes, deleting the configuration
+directory, and deleting the repository store in one shot.
 
 ## Node Dependencies
 
