@@ -36,6 +36,14 @@ directly build the project yourself by cloning and using Cargo.
 
 See [usage guide][ocd-usage].
 
+## Acknowledgements
+
+- Arch Linux Wiki page about [dotfiles][archwiki-dotfiles], which provided a
+  great introduction about using Git to manage dotfiles using the bare-alias
+  technique.
+- Richard Hartmann's [vcsh][vcsh-git] and [myrepos][mr-git] tools, which
+  generally provided the overall look and feel of OCD's command set.
+
 ## Contribution
 
 The OCD coding project is open to contribution.
@@ -65,3 +73,5 @@ project, and can be distributed with the project under its main licenses.
 [contrib-guide]: ./CONTRIBUTING.md
 [linux-dco]: https://developercertificate.org/
 [reuse-3.3]: https://reuse.software/spec-3.3/
+[vcsh-git]: https://github.com/RichiH/vcsh
+[mr-git]: https://github.com/RichiH/myrepos
