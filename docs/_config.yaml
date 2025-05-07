@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 # SPDX-License-Identifier: MIT
 
-title: OCD Tool
+title: OCD
 description: Organize current dotfiles
 
-remote_theme: pages-themes/time-machine@v0.2.0
+remote_theme: pages-themes/hacker@v0.2.0
 plugins:
   - jekyll-remote-theme
