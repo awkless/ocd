@@ -1,13 +1,14 @@
 ---
 layout: default
 title: OCD Usage Guide
-toc: true
 ---
 
 <!--
 SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 SPDX-License-Identifier: MIT
 -->
+
+{:toc}
 
 ## Getting Started
 
@@ -413,6 +414,102 @@ deployment = { kind = "bare_alias", dir_alias = "$HOME" }
 url = "https://github.com/user/vim.git"
 excluded = ["README*"]
 ```
+
+## Monolithic Structure
+
+The previous sections of this text mainly showcased the modular structuring
+features of OCD. While the tool encourages the user to employ a modular setup
+for their dotfiles, monolithic structuring is still offered. Sometimes you just
+want to plop stuff somewhere for safe keeping, and organize it later.
+
+A monolithic cluster is created by only using the root repository, with no nodes
+to store dotfiles. By default, OCD uses the following layout for root in your
+cluster definition:
+
+```
+dir_alias = "config_dir"
+```
+
+In fact, this default is expected to be so common, that you do not even need to
+directly specify it. This is how all previous examples shown to you operate, by
+simply not stating the directory alias for root, causing OCD to simply use the
+standard configuration directory at `$XDG_CONFIG_HOME/ocd`.
+
+OCD allows you to change root's directory alias to a secondary location, which
+is your home directory:
+
+```
+dir_alias = "home_dir"
+```
+
+By doing this, you must ensure that you place your cluster definition at
+`.config/ocd/cluster.toml` within the root repository instead of the default
+top-level location of just `cluster.toml` like you normally would for a modular
+setup. Visual example:
+
+```
+# When using `dir_alias = "config_dir"`
+|- root/
+|-- cluster.toml
+
+# When using `dir_alias = "home_dir"`
+|- root/
+|-- .config/
+|--- ocd/
+|---- cluster.toml
+```
+
+Now any dotfiles you want to have apart of your cluster can be directly
+committed into root itself:
+
+```
+ocd root add .vimrc
+ocd root commit -m "Add Vim config"
+ocd root push origin main
+```
+
+No need to specify or define nodes! Now when you decide to clone your monolithic
+cluster, it will just clone root and deploy everything in your home directory in
+one shot. All operations for managing your cluster can now be done through just
+the root repository for this setup.
+
+Of course, OCD does not limit you to not having any nodes when having root use
+your home directory as its directory alias. You can still do the following in
+your cluster definition, and the command set will still work all the same:
+
+```
+dir_alias = "home_dir"
+excluded = ["README*", "LICENSE*"]
+
+[nodes.vim]
+deployment = { kind = "bare_alias", dir_alias = "$HOME" }
+url = "https://github.com/user/vim.git"
+excluded = ["README*"]
+
+[nodes.dash]
+deployment = "bare_alias"
+url = "https://github.com/user/dash.git"
+dependencies = ["polyglot_ps1"]
+
+[nodes.polyglot_ps1]
+deployment = { kind = "bare_alias", dir_alias = "$HOME/.local/share" }
+url = "https://github.com/agkozak/polyglot.git"
+
+[nodes.bash]
+deployment = "bare_alias"
+url = "https://github.com/user/bash.git"
+dependencies = ["dash"]
+```
+
+Whether you decide to use your home directory or the OCD configuration directory
+as a directory alias for root, you can mix and match functionality to best suit
+your needs. OCD is all about flexibility!
+
+> __NOTE__
+>
+> The "home_dir" and "config_dir" are the only two valid settings for root
+> directory aliases. Nodes can generally be deployed anywhere relative to your
+> home directory.
 
 [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles
 [git-scm]: https://git-scm.com/downloads
