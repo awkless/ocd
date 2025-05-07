@@ -39,6 +39,13 @@ offering finer control over their configuration across multiple machines.
 {% endfor %}
 </ul>
 
+## Contribution
+
+The OCD coding project is open to contribution.
+
+See the [contribution guidelines][contrib-guide] for more information about
+contributing to the project.
+
 ## Acknowledgements
 
 - Arch Linux Wiki page about [dotfiles][archwiki-dotfiles], which provided a
@@ -65,3 +72,4 @@ project, and can be distributed with the project under its main licenses.
 [mr-git]: https://github.com/RichiH/myrepos
 [linux-dco]: https://developercertificate.org/
 [reuse-3.3]: https://reuse.software/spec-3.3/
+[contrib-guide]: ../CONTRIBUTING.md
