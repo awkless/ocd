@@ -41,12 +41,14 @@ git2 = "0.20.1"
 glob = "0.3.2"
 indicatif = "0.17.11"
 inquire = "0.7.5"
+minus = { version = "5.6.1", features = [ "static_output", "search" ] }
 run_script = "0.11.0"
+serde = { version = "1.0.219", features = ["derive"] }
 shellexpand = "3.1.1"
 tabled = "0.19.0"
 thiserror = "2.0.12"
 tokio = { version = "1.44.2", features = ["full"] }
-toml_edit = "0.22.24"
+toml_edit = { version = "0.22.24", features = ["serde", "parse"] }
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
