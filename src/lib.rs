@@ -63,6 +63,9 @@ pub enum Error {
     #[error(transparent)]
     Toml(#[from] toml_edit::TomlError),
 
+    #[error(transparent)]
+    TomlDeserialize(#[from] toml_edit::de::Error),
+
     #[error("Dependency {name:?} not found in cluster definition")]
     DependencyNotFound { name: String },
 
@@ -112,6 +115,9 @@ pub enum Error {
     NoNodeName,
 
     #[error(transparent)]
+    Minus(#[from] minus::error::MinusError),
+
+    #[error(transparent)]
     RunScript(#[from] run_script::types::ScriptError),
 }
 
@@ -120,6 +126,7 @@ impl From<Error> for i32 {
         match error {
             Error::NoWayHome => exitcode::IOERR,
             Error::Toml(..) => exitcode::CONFIG,
+            Error::TomlDeserialize(..) => exitcode::CONFIG,
             Error::DependencyNotFound { .. } => exitcode::CONFIG,
             Error::CircularDependencies { .. } => exitcode::CONFIG,
             Error::EntryNotTable { .. } => exitcode::CONFIG,
@@ -136,6 +143,7 @@ impl From<Error> for i32 {
             Error::ProgressStyle(..) => exitcode::SOFTWARE,
             Error::Inquire(..) => exitcode::SOFTWARE,
             Error::NoNodeName => exitcode::USAGE,
+            Error::Minus(..) => exitcode::SOFTWARE,
             Error::RunScript(..) => exitcode::OSERR,
         }
     }

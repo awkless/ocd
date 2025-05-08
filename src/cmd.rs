@@ -9,12 +9,12 @@
 use crate::{
     fs::{config_dir, data_dir, home_dir, load, save, Existence},
     glob_match,
-    model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
+    model::{Cluster, DeploymentKind, DirAlias, HookKind, HookRunner, NodeEntry},
     store::{DeployAction, MultiNodeClone, Node, Root, TablizeCluster},
     Error, Result,
 };
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use inquire::prompt_confirmation;
 use std::{ffi::OsString, fs::remove_dir_all, path::PathBuf};
 use tracing::{instrument, warn};
@@ -28,6 +28,9 @@ use tracing::{instrument, warn};
     version
 )]
 pub struct Ocd {
+    #[arg(default_value_t = HookAction::default(), long, short, value_enum, value_name = "action")]
+    pub run_hook: HookAction,
+
     /// Command-set interfaces.
     #[command(subcommand)]
     pub command: Command,
@@ -45,15 +48,29 @@ impl Ocd {
     /// Will fail if given command implementation fails.
     pub async fn run(self) -> Result<()> {
         match self.command {
-            Command::Clone(opts) => run_clone(opts).await,
-            Command::Init(opts) => run_init(opts),
-            Command::Deploy(opts) => run_deploy(opts),
-            Command::Undeploy(opts) => run_undeploy(opts),
-            Command::Remove(opts) => run_remove(opts),
+            Command::Clone(opts) => run_clone(self.run_hook, opts).await,
+            Command::Init(opts) => run_init(self.run_hook, opts),
+            Command::Deploy(opts) => run_deploy(self.run_hook, opts),
+            Command::Undeploy(opts) => run_undeploy(self.run_hook, opts),
+            Command::Remove(opts) => run_remove(self.run_hook, opts),
             Command::List(opts) => run_list(opts),
             Command::Git(opts) => run_git(opts),
         }
     }
+}
+
+/// Behavior variants for hook execution.
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum HookAction {
+    /// Always execute hooks no questions asked.
+    Always,
+
+    /// Prompt user with hook's contents, and execute it if and only if user accepts it.
+    #[default]
+    Prompt,
+
+    /// Never execute hooks no questions asked.
+    Never,
 }
 
 /// Full command-set of OCD.
@@ -174,7 +191,7 @@ pub struct ListOptions {
     pub names_only: bool,
 }
 
-async fn run_clone(opts: CloneOptions) -> Result<()> {
+async fn run_clone(run_hook: HookAction, opts: CloneOptions) -> Result<()> {
     let _ = match Root::new_clone(&opts.url) {
         Ok(root) => root,
         Err(error) => {
@@ -185,15 +202,25 @@ async fn run_clone(opts: CloneOptions) -> Result<()> {
         }
     };
 
+    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
+    hooks.set_action(run_hook);
+    hooks.run("clone", HookKind::Pre, None)?;
+
     let cluster: Cluster = load("cluster.toml", Existence::Required)?;
     let multi_clone = MultiNodeClone::new(&cluster, opts.jobs)?;
     multi_clone.clone_all().await?;
 
+    hooks.run("clone", HookKind::Post, None)?;
+
     Ok(())
 }
 
-pub fn run_init(opts: InitOptions) -> Result<()> {
+pub fn run_init(run_hook: HookAction, opts: InitOptions) -> Result<()> {
     let mut cluster: Cluster = load("cluster.toml", Existence::Required)?;
+
+    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
+    hooks.set_action(run_hook);
+    hooks.run("init", HookKind::Pre, None)?;
 
     if opts.root {
         let _ = Root::new_init()?;
@@ -220,13 +247,19 @@ pub fn run_init(opts: InitOptions) -> Result<()> {
 
     save("cluster.toml", cluster.to_string())?;
 
+    hooks.run("init", HookKind::Post, None)?;
+
     Ok(())
 }
 
 #[instrument(skip(opts), level = "debug")]
-pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
+pub fn run_deploy(run_hook: HookAction, mut opts: DeployOptions) -> Result<()> {
     let root = Root::new_open()?;
     let cluster: Cluster = load("cluster.toml", Existence::Required)?;
+
+    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
+    hooks.set_action(run_hook);
+
     let action = if opts.with_excluded { DeployAction::DeployAll } else { DeployAction::Deploy };
 
     opts.patterns.dedup();
@@ -240,35 +273,40 @@ pub fn run_deploy(mut opts: DeployOptions) -> Result<()> {
     }
 
     let targets = glob_match(&opts.patterns, cluster.nodes.keys());
-    for target in &targets {
-        if opts.only {
+    hooks.run("deploy", HookKind::Pre, Some(&targets))?;
+
+    let mut nodes = Vec::new();
+    if opts.only {
+        for target in &targets {
             let entry = cluster.get_node(target)?;
-            let node = if data_dir()?.join(target).exists() {
-                Node::new_open(target, entry)?
-            } else {
-                warn!("Node {target:?} does not exist in repository store, cloning it");
-                Node::new_clone(target, entry)?
-            };
-            node.deploy(action)?;
-        } else {
+            let node = Node::new_open(target, entry)?;
+            nodes.push(node);
+        }
+    } else {
+        for target in &targets {
             for (name, entry) in cluster.dependency_iter(target) {
-                let node = if data_dir()?.join(name).exists() {
-                    Node::new_open(name, entry)?
-                } else {
-                    warn!("Node {name:?} does not exist in repository store, cloning it");
-                    Node::new_clone(name, entry)?
-                };
-                node.deploy(action)?;
+                let node = Node::new_open(name, entry)?;
+                nodes.push(node);
             }
         }
     }
 
+    for node in nodes {
+        node.deploy(action)?;
+    }
+
+    hooks.run("deploy", HookKind::Post, Some(&targets))?;
+
     Ok(())
 }
 
-fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
+fn run_undeploy(run_hook: HookAction, mut opts: UndeployOptions) -> Result<()> {
     let root = Root::new_open()?;
     let cluster: Cluster = load("cluster.toml", Existence::Required)?;
+
+    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
+    hooks.set_action(run_hook);
+
     let action =
         if opts.excluded_only { DeployAction::UndeployExcludes } else { DeployAction::Undeploy };
 
@@ -283,35 +321,39 @@ fn run_undeploy(mut opts: UndeployOptions) -> Result<()> {
     }
 
     let targets = glob_match(&opts.patterns, cluster.nodes.keys());
-    for target in &targets {
-        if opts.only {
+    hooks.run("undeploy", HookKind::Pre, Some(&targets))?;
+
+    let mut nodes = Vec::new();
+    if opts.only {
+        for target in &targets {
             let entry = cluster.get_node(target)?;
-            let node = if data_dir()?.join(target).exists() {
-                Node::new_open(target, entry)?
-            } else {
-                warn!("Node {target:?} does not exist in repository store, cloning it");
-                Node::new_clone(target, entry)?
-            };
-            node.deploy(action)?;
-        } else {
+            let node = Node::new_open(target, entry)?;
+            nodes.push(node);
+        }
+    } else {
+        for target in &targets {
             for (name, entry) in cluster.dependency_iter(target) {
-                let node = if data_dir()?.join(name).exists() {
-                    Node::new_open(name, entry)?
-                } else {
-                    warn!("Node {name:?} does not exist in repository store, cloning it");
-                    Node::new_clone(name, entry)?
-                };
-                node.deploy(action)?;
+                let node = Node::new_open(name, entry)?;
+                nodes.push(node);
             }
         }
     }
+
+    for node in nodes {
+        node.deploy(action)?;
+    }
+
+    hooks.run("undeploy", HookKind::Post, Some(&targets))?;
 
     Ok(())
 }
 
 #[instrument(skip(opts), level = "debug")]
-fn run_remove(mut opts: RemoveOptions) -> Result<()> {
+fn run_remove(run_hook: HookAction, mut opts: RemoveOptions) -> Result<()> {
     let mut cluster: Cluster = load("cluster.toml", Existence::Required)?;
+
+    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
+    hooks.set_action(run_hook);
 
     opts.patterns.dedup();
     for pattern in &mut opts.patterns {
@@ -330,6 +372,8 @@ fn run_remove(mut opts: RemoveOptions) -> Result<()> {
     }
 
     let targets = glob_match(&opts.patterns, cluster.nodes.keys());
+    hooks.run("rm", HookKind::Pre, Some(&targets))?;
+
     for target in &targets {
         let node = cluster.remove_node(target)?;
         let repo = Node::new_open(target, &node)?;
@@ -338,6 +382,8 @@ fn run_remove(mut opts: RemoveOptions) -> Result<()> {
     }
 
     save("cluster.toml", cluster.to_string())?;
+
+    hooks.run("rm", HookKind::Post, Some(&targets))?;
 
     Ok(())
 }
