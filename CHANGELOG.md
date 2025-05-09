@@ -5,6 +5,26 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.7.0] - 2025-05-08
+
+### Added
+
+- Add hook command system!
+  - Add `crate::model::HookRunner` to parse and execute hooks for a given
+    target command in OCD.
+  - Add `crate::model::CommandHooks` to perform parsing and deserialization of
+    hook configuration file for `crates::model::HookRunner`.
+  - Integrate `crate::model::HookRunner` into command set defined in `cmd`
+    module.
+- Create a GitHub page for OCD project.
+- Digitize dev logs on new GitHub page for project.
+- Add badges for current CI workflow status, and crates version to `README.md`
+- Add "Acknowledgements` section to `README.md`
+
+### Changed
+
+- Move usage guide from `README.md` into usage section of the OCD GitHub page.
+
 ## [0.6.2] - 2025-05-05
 
 ### Added
