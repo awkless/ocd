@@ -978,7 +978,7 @@ dependencies = [
 
 [[package]]
 name = "ocd"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "auth-git2",
