@@ -55,6 +55,20 @@ through OCD's command-set.
 
 ## Quick Start
 
+> __WARNING__
+>
+> Version 0.7.0 introduces a bug where the init command will fail if the cluster
+> definition is not already created. Thus, when creating a new root, perform the
+> following beforehand:
+>
+> ```
+> touch ~/.config/ocd/cluster.toml
+> ```
+>
+> Version 0.8.0 will not only include a few new commands, but will also fix this
+> issue. Sorry for the inconvenience. Stabilization efforts are still in
+> progress at this moment.
+
 First, construct a new root repository through the `init` command:
 
 ```
