@@ -12,10 +12,13 @@ multiple-versions = "deny"
 wildcards = "deny"
 skip = [
   { name = "bitflags", version = "1.3.2" },
+  { name = "crossterm", version = "0.25.0" },
   { name = "getrandom", version = "0.2.15" },
   { name = "mio", version = "0.8.11" },
   { name = "regex-automata", version = "0.1.10" },
   { name = "regex-syntax", version = "0.6.29" },
+  { name = "thiserror", version = "1.0.69" },
+  { name = "thiserror-impl", version = "1.0.69" },
   { name = "unicode-width", version = "0.1.14" },
   { name = "wasi", version = "0.11.0" },
   { name = "windows-sys", version = "0.48.0" },
