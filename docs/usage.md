@@ -511,7 +511,142 @@ your needs. OCD is all about flexibility!
 > directory aliases. Nodes can generally be deployed anywhere relative to your
 > home directory.
 
+## Command Hooks
+
+You can further enhance your configurations through the use of OCD's command
+hook system. Hooks can be defined in the `$XDG_CONFIG_HOME/ocd/hooks.toml` file.
+Each hook entry operates off of a hook script that is expected to be stored at
+`$XDG_CONFIG_HOME/ocd/hooks/`.
+
+For example, lets assume you have a repository that patches the
+[st][suckless-st] (Suckless Terminal emulator) to your liking at
+"https://github.com/user/st.git". You want it to built and installed each time
+you run the `deploy` command. Here is how you can do that. First, create a hook
+entry in your hook configuration file:
+
+```
+[hooks]
+deploy = [
+  { post = "make_install.sh", workdir = "$HOME/.local/share/ocd/st", node = "st" },
+]
+```
+
+The above issues a hook script to be executed after the deploy command on the
+target node named "st". This hook script will be executed in the "st" repository
+housed in the repository store of your cluster. Next we make sure that the "st"
+node is defined in our cluster definition:
+
+> __NOTE__
+>
+> You can make hook scripts execute before a given command by using the `pre`
+> field instead of the `post` field.
+
+> __WARNING__
+>
+> When sourcing a hook script for either the `pre` or `post` fields for a given
+> hook entry, __only__ give the name of the script, _not_ the absolute or
+> relative path of the hook script. If you provide something like
+> `pre = "/home/awkless/hooks/hook.sh"`, then OCD will try to look for
+> `$XDG_CONFIG_HOME/ocd/hooks/home/awkless/hooks/hook.sh` instead.
+>
+> All hooks must always be defined in the `$XDG_CONFIG_HOME/ocd/hooks/`
+> directory, because OCD will never look anywhere else. This is done to keep
+> hooks in a single self contained area for easier review of their contents.
+> Be suspicious of hook scripts provided by other people's clusters that source
+> other scripts outside of the hooks directory!
+
+```
+[nodes.st]
+deployment = "normal"
+url = "https://github.com/user/st.git"
+```
+
+Moving on, we define the hook script in the special `$XDG_CONFIG_HOME/ocd/hooks`
+directory:
+
+```
+#!/bin/sh
+
+make clean
+make
+sudo make install
+```
+
+Finally, we execute the hook script by making a call to OCD's deploy command
+on the "st" node:
+
+```
+ocd deploy st
+```
+
+By default, any hooks executed will be paged and prompted to you, asking if you
+actually want to execute the hook. This is done to make you aware of what you
+are making OCD do at all times as a security measure. To accept the hook hit the
+"a" key, to deny the hook it the "d" key. The pager being used is provided from
+the [minus][minus-repo] project.
+
+If you already trust the hook or any other hook that may be executed for a given
+command then you can use the "always" hook action to always execute hooks no
+questions asked:
+
+```
+ocd --run-hook=always deploy st
+```
+
+If you do trust a given hook, or you just do not want any hooks to be executed
+for whatever reason, then use the "never" hook action:
+
+```
+ocd --run-hook=never deploy st
+```
+
+The previous example showcased a _targeted hook_. Hooks can be written to not
+target a specific node. Simply do not provide a `node` field when defining a
+given hook:
+
+```
+[hooks]
+deploy = [
+  { post = "make_install.sh", workdir = "$HOME/.local/share/ocd/st" },
+]
+```
+
+In the above hook configuration, this new hook will always execute no matter the
+node specified to be deployed. So something like:
+
+```
+ocd deploy vim
+```
+
+Will stil cause the hook to be executed, whereas before the hook would have only
+been executed if you directly specified the "st" node.
+
+> __NOTE__
+>
+> Targeted hooks only operate on _nodes_. If you want to target root, then use
+> a non-targeted hook.
+
+Finally, not all commands offer support for hooks, or even targeted hooks. Here
+is a helpful chart of current hook support for each command that OCD offers.
+
+| Command      | Non-Targeted Hook Support | Targeted Hook Support |
+| ------------ | ------------------------- | --------------------- |
+| clone        | yes                       | no                    |
+| init         | yes                       | no                    |
+| deploy       | yes                       | yes                   |
+| undeploy     | yes                       | yes                   |
+| rm           | yes                       | yes                   |
+| ls           | no                        | no                    |
+| git shortcut | no                        | no                    |
+
+Make sure that any hooks you define in both `$XDG_CONFIG_HOME/ocd/hooks.toml`
+and `$XDG_CONFIG_HOME/ocd/hooks/` are committed into your root repository so you
+can have them always deployed and ready to go when you transfer your cluster to
+a new machine!
+
 [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles
 [git-scm]: https://git-scm.com/downloads
 [polyglot-ps1]: https://github.com/agkozak/polyglot
 [rust-lang]: https://www.rust-lang.org/tools/install
+[suckless-st]: https://st.suckless.org/
+[minus-repo]: https://github.com/AMythicDev/minus/
