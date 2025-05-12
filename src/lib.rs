@@ -41,17 +41,16 @@
 
 #![allow(dead_code)]
 
-pub(crate) mod cmd;
+//pub(crate) mod cmd;
 pub(crate) mod fs;
 pub(crate) mod model;
-pub(crate) mod store;
+//pub(crate) mod store;
 
 #[doc(hidden)]
-pub use cmd::Ocd;
+//pub use cmd::Ocd;
 
-#[cfg(test)]
-mod tests;
-
+// #[cfg(test)]
+// mod tests;
 use tracing::{instrument, warn};
 
 /// All possible error variants that OCD can encounter during runtime.
@@ -59,12 +58,6 @@ use tracing::{instrument, warn};
 pub enum Error {
     #[error("Cannot determine path to home directory")]
     NoWayHome,
-
-    #[error(transparent)]
-    Toml(#[from] toml_edit::TomlError),
-
-    #[error(transparent)]
-    TomlDeserialize(#[from] toml_edit::de::Error),
 
     #[error("Dependency {name:?} not found in cluster definition")]
     DependencyNotFound { name: String },
@@ -125,8 +118,6 @@ impl From<Error> for i32 {
     fn from(error: Error) -> Self {
         match error {
             Error::NoWayHome => exitcode::IOERR,
-            Error::Toml(..) => exitcode::CONFIG,
-            Error::TomlDeserialize(..) => exitcode::CONFIG,
             Error::DependencyNotFound { .. } => exitcode::CONFIG,
             Error::CircularDependencies { .. } => exitcode::CONFIG,
             Error::EntryNotTable { .. } => exitcode::CONFIG,

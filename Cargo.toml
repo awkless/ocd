@@ -11,7 +11,7 @@ readme = "README.md"
 authors = ["Jason Pena <jasonpena@awkless.com>"]
 edition = "2021"
 license = "MIT"
-version = "0.7.0"
+version = "0.8.0"
 rust-version = "1.82.0"
 
 [lib]
@@ -34,6 +34,7 @@ opt-level = 1
 anyhow = "1.0.98"
 auth-git2 = "0.5.7"
 clap = { version = "4.5.37", features = ["derive"] }
+config = { version = "0.15.11", defaults = false, features = ["toml"] }
 dirs = "6.0.0"
 exitcode = "1.1.2"
 futures = "0.3.31"
@@ -48,7 +49,7 @@ shellexpand = "3.1.1"
 tabled = "0.19.0"
 thiserror = "2.0.12"
 tokio = { version = "1.44.2", features = ["full"] }
-toml_edit = { version = "0.22.24", features = ["serde", "parse"] }
+toml = "0.8.22"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
