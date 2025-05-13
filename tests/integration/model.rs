@@ -70,3 +70,23 @@ fn cluster_new_invalid_setup(_: &str, content: &str) -> Result<()> {
     assert!(result.is_err());
     Ok(())
 }
+
+#[dir_cases("tests/fixtures/cluster_new_acyclic_check")]
+#[sealed_test(env = [("XDG_CONFIG_HOME", ".config/ocd")])]
+fn cluster_new_acyclic_check(case: &str, content: &str) -> Result<()> {
+    setup_cluster_env(content)?;
+    match case {
+        "tests/fixtures/cluster_new_acyclic_check/no_dependencies.txtar"
+        | "tests/fixtures/cluster_new_acyclic_check/full_dependencies.txtar" => {
+            let result = Cluster::new();
+            assert!(result.is_ok());
+        }
+        "tests/fixtures/cluster_new_acyclic_check/depend_self.txtar"
+        | "tests/fixtures/cluster_new_acyclic_check/full_cycle.txtar" => {
+            let result = Cluster::new();
+            assert!(result.is_err());
+        }
+        &_ => unreachable!("No code for this yet!"),
+    }
+    Ok(())
+}

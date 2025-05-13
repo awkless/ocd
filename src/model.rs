@@ -12,7 +12,14 @@ use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Deserializer,
 };
-use std::{collections::HashMap, fmt, marker::PhantomData, path::PathBuf, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    fmt,
+    marker::PhantomData,
+    path::PathBuf,
+    str::FromStr,
+};
+use tracing::{debug, instrument, trace};
 
 /// Cluster definition handler.
 ///
@@ -51,25 +58,80 @@ impl Cluster {
     ///
     /// - Will fail if `root.toml` does not exist.
     /// - Will fail if _any_ configuration file contains invalid TOML formatting.
+    #[instrument(level = "debug")]
     pub fn new() -> Result<Self> {
-        let root: RootEntry = Config::builder()
-            .add_source(File::from(config_dir()?.join("root.toml")))
-            .build()?
-            .try_deserialize()?;
+        trace!("Load cluster configuration");
+
+        let path = config_dir()?.join("root.toml");
+        debug!("Load root at {path:?}");
+        let root: RootEntry =
+            Config::builder().add_source(File::from(path)).build()?.try_deserialize()?;
 
         let pattern = config_dir()?.join("nodes").join("*.toml").to_string_lossy().into_owned();
         let mut nodes = HashMap::new();
         for entry in glob::glob(pattern.as_str())? {
-            let entry = entry?;
-            let name = entry.file_stem().unwrap().to_string_lossy().into_owned();
+            // INVARIANT: The name of a node is the file name itself without the extension.
+            let path = entry?;
+            let name = path.file_stem().unwrap().to_string_lossy().into_owned();
+
+            debug!("Load node {name:?} at {path:?}");
             let node: NodeEntry = Config::builder()
-                .add_source(File::from(entry).required(false))
+                .add_source(File::from(path).required(false))
                 .build()?
                 .try_deserialize()?;
             nodes.insert(name, node);
         }
 
-        Ok(Self { root, nodes })
+        let cluster = Self { root, nodes };
+        cluster.acyclic_check()?;
+
+        Ok(cluster)
+    }
+
+    #[instrument(skip(self), level = "debug")]
+    fn acyclic_check(&self) -> Result<()> {
+        trace!("Perform acyclic check on cluster");
+        let mut in_degree: HashMap<String, usize> = HashMap::new();
+        let mut queue: VecDeque<String> = VecDeque::new();
+        let mut visited: HashSet<String> = HashSet::new();
+
+        // INVARIANT: The in-degree of a node is the sum all all incoming edegs of each
+        // destination node.
+        for (name, node) in &self.nodes {
+            in_degree.entry(name.clone()).or_insert(0);
+            for dependency in node.settings.dependencies.iter().flatten() {
+                *in_degree.entry(dependency.clone()).or_insert(0) += 1;
+            }
+        }
+
+        // INVARIANT: Queue only contains nodes with in-degree of 0.
+        for (name, degree) in &in_degree {
+            if *degree == 0 {
+                queue.push_back(name.clone());
+            }
+        }
+
+        while let Some(current) = queue.pop_front() {
+            for dependency in self.nodes[&current].settings.dependencies.iter().flatten() {
+                *in_degree.get_mut(dependency).unwrap() -= 1;
+                if *in_degree.get(dependency).unwrap() == 0 {
+                    queue.push_back(dependency.clone());
+                }
+            }
+            visited.insert(current);
+        }
+
+        // INVARIANT: Queue is empty, but graph has not been fully visited.
+        //   - There exists a cycle.
+        //   - The unvisited nodes represent this cycle.
+        if visited.len() != self.nodes.len() {
+            let cycle: Vec<String> =
+                self.nodes.keys().filter(|key| !visited.contains(*key)).cloned().collect();
+            return Err(anyhow!("Cluster contains cycle(s): {cycle:?}"));
+        }
+        debug!("Topological sort of cluster nodes: {visited:?}");
+
+        Ok(())
     }
 }
 

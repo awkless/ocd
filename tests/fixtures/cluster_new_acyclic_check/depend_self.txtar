@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+#
+# Acyclic check for `Cluster::new` should fail this cluster, because a node sets itself as a
+# dependency for itself.
+
+-- .config/ocd/root.toml --
+[settings]
+work_dir_alias = "config_dir"
+
+-- .config/ocd/nodes/fail.toml --
+[settings]
+deployment = "bare_alias"
+url = "https://some/url"
+dependencies = ["fail"]
