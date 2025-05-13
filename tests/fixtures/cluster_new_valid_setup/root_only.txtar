@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+
+-- .config/ocd/root.toml --
+[settings]
+work_dir_alias = "home_dir"

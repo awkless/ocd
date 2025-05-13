@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+#
+# Should fail because root contains invalid TOML formatting.
+
+-- .config/ocd/root.toml --
+[settings = work_dir_alias = "config_dir"]

@@ -7,11 +7,71 @@
 //! OCD tool.
 
 use anyhow::{anyhow, Result};
+use config::{Config, File};
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Deserializer,
 };
-use std::{fmt, marker::PhantomData, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, fmt, marker::PhantomData, path::PathBuf, str::FromStr};
+
+/// Cluster definition handler.
+///
+/// A cluster definition simply defines the entries of a given cluster that OCD must manage through
+/// the repository store. A cluster is comprised of two basic entry types: __root__ and __node__.
+/// The root is always bare-alias, and is always deployed, because it contains the cluster
+/// definition itself. There can only be one root for any given cluster that the user defines.
+/// A node entry can either be normal or bare-alias. The user can define zero or more nodes within
+/// a given cluster, while root must always exist.
+///
+/// Each entry in the cluster definition receives its own configuration file in the TOML format.
+/// The root of a cluster is stored at the top-level of OCD's configuration directory as
+/// `$XDG_CONFIG_HOME/ocd/root.toml`, while nodes are stored in a sub-directory at
+/// `$XDG_CONFIG_HOME/ocd/nodes`. The name of a given configuration file is the name that it will
+/// be given within the repository store (excluding file extension).
+///
+/// # Invariants
+///
+/// - Root always exists.
+/// - All node dependencies are acyclic.
+/// - Working directory aliases are expanded.
+/// - Node dependencies are defined.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Cluster {
+    /// Root entry of cluster.
+    pub root: RootEntry,
+
+    /// Node entries of cluster represented as DAG.
+    pub nodes: HashMap<String, NodeEntry>,
+}
+
+impl Cluster {
+    /// Construct new cluster definition by reading and deserializing configuration files.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if `root.toml` does not exist.
+    /// - Will fail if _any_ configuration file contains invalid TOML formatting.
+    pub fn new() -> Result<Self> {
+        let root: RootEntry = Config::builder()
+            .add_source(File::from(config_dir()?.join("root.toml")))
+            .build()?
+            .try_deserialize()?;
+
+        let pattern = config_dir()?.join("nodes").join("*.toml").to_string_lossy().into_owned();
+        let mut nodes = HashMap::new();
+        for entry in glob::glob(pattern.as_str())? {
+            let entry = entry?;
+            let name = entry.file_stem().unwrap().to_string_lossy().into_owned();
+            let node: NodeEntry = Config::builder()
+                .add_source(File::from(entry).required(false))
+                .build()?
+                .try_deserialize()?;
+            nodes.insert(name, node);
+        }
+
+        Ok(Self { root, nodes })
+    }
+}
 
 /// Root entry of cluster definition.
 ///
@@ -32,8 +92,71 @@ use std::{fmt, marker::PhantomData, path::PathBuf, str::FromStr};
 ///
 /// Root also has access to the file exclusion feature. The user can specify a list of sparsity
 /// rules to exclude certain files and directories from deployment.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub struct RootEntry {
+    /// Deployment options.
+    pub settings: RootEntrySettings,
+}
+
+impl RootEntry {
+    /// Construct new root entry through builder.
+    pub fn builder() -> Result<RootEntryBuilder> {
+        RootEntryBuilder::new()
+    }
+}
+
+/// Builder for [`RootEntry`].
+#[derive(Debug)]
+pub struct RootEntryBuilder {
+    settings: RootEntrySettings,
+}
+
+impl RootEntryBuilder {
+    /// Construct new builder for [`RootEntry`].
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            settings: RootEntrySettings {
+                work_dir_alias: WorkDirAlias::new(config_dir()?),
+                excluded: None,
+            },
+        })
+    }
+
+    /// Deploy to standard configuration directory.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if configuration directory path cannot be determined.
+    pub fn deploy_to_config_dir(mut self) -> Result<Self> {
+        self.settings.work_dir_alias = WorkDirAlias::new(config_dir()?);
+        Ok(self)
+    }
+
+    /// Deploy to home directory.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if home directory path cannot be determined.
+    pub fn deploy_to_home_dir(mut self) -> Result<Self> {
+        self.settings.work_dir_alias = WorkDirAlias::new(home_dir()?);
+        Ok(self)
+    }
+
+    /// Set exclusion rules to exclude files from deployment for node entry.
+    pub fn excluded(mut self, rules: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.settings.excluded = Some(rules.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Build new [`RootEntry`].
+    pub fn build(self) -> RootEntry {
+        RootEntry { settings: self.settings }
+    }
+}
+
+/// Deployment options for root entry.
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+pub struct RootEntrySettings {
     /// Working directory alias option.
     #[serde(deserialize_with = "deserialize_root_work_dir_alias")]
     pub work_dir_alias: WorkDirAlias,
@@ -68,9 +191,78 @@ where
 /// itself.
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 pub struct NodeEntry {
+    pub settings: NodeEntrySettings,
+}
+
+impl NodeEntry {
+    /// Construct new node entry through builder.
+    pub fn builder() -> Result<NodeEntryBuilder> {
+        NodeEntryBuilder::new()
+    }
+}
+
+/// Builder for [`NodeEntry`]
+#[derive(Debug)]
+pub struct NodeEntryBuilder {
+    settings: NodeEntrySettings,
+}
+
+impl NodeEntryBuilder {
+    /// Construct new empty builder for [`NodeEntry`].
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if default working directory alias cannot be determined.
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            settings: NodeEntrySettings {
+                deployment: NodeEntryDeployment {
+                    kind: DeploymentKind::Normal,
+                    work_dir_alias: WorkDirAlias::try_default()?,
+                },
+                url: String::default(),
+                excluded: None,
+                dependencies: None,
+            },
+        })
+    }
+
+    /// Set method of deployment for node entry.
+    pub fn deployment(mut self, kind: DeploymentKind, work_dir_alias: WorkDirAlias) -> Self {
+        self.settings.deployment = NodeEntryDeployment { kind, work_dir_alias };
+        self
+    }
+
+    /// Set URL to clone node entry from.
+    pub fn url(mut self, url: impl Into<String>) -> Self {
+        self.settings.url = url.into();
+        self
+    }
+
+    /// Set exclusion rules to exclude files from deployment for node entry.
+    pub fn excluded(mut self, rules: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.settings.excluded = Some(rules.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Set dependencies to be deployed with node entry.
+    pub fn dependencies(mut self, nodes: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.settings.dependencies = Some(nodes.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Build new [`NodeEntry`].
+    pub fn build(self) -> NodeEntry {
+        NodeEntry { settings: self.settings }
+    }
+}
+
+/// Settings for node entry.
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+pub struct NodeEntrySettings {
     /// Deployment method for node entry.
     #[serde(deserialize_with = "deserialize_node_deployment")]
-    pub deployment: NodeDeployment,
+    pub deployment: NodeEntryDeployment,
 
     /// URL to clone node entry from.
     pub url: String,
@@ -93,7 +285,7 @@ pub struct NodeEntry {
 /// Bare-alias deployment not only ensures that node entry has been cloned into repository store,
 /// but is also properly deployed to target working directory alias.
 #[derive(Debug, PartialEq, Eq, Deserialize)]
-pub struct NodeDeployment {
+pub struct NodeEntryDeployment {
     /// Deployment kind.
     pub kind: DeploymentKind,
 
@@ -101,37 +293,37 @@ pub struct NodeDeployment {
     pub work_dir_alias: WorkDirAlias,
 }
 
-impl FromStr for NodeDeployment {
+impl FromStr for NodeEntryDeployment {
     type Err = anyhow::Error;
 
     fn from_str(data: &str) -> Result<Self, Self::Err> {
         let (kind, work_dir_alias) = match data {
-            "normal" => (DeploymentKind::Normal, WorkDirAlias::default()),
+            "normal" => (DeploymentKind::Normal, WorkDirAlias::try_default()?),
             "bare_alias" => (DeploymentKind::BareAlias, WorkDirAlias::new(home_dir()?)),
             _ => return Err(anyhow!("Invalid deployment kind")),
         };
 
-        Ok(NodeDeployment { kind, work_dir_alias })
+        Ok(NodeEntryDeployment { kind, work_dir_alias })
     }
 }
 
-struct NodeDeploymentVisitor(PhantomData<fn() -> NodeDeployment>);
+struct NodeEntryDeploymentVisitor(PhantomData<fn() -> NodeEntryDeployment>);
 
-impl<'de> Visitor<'de> for NodeDeploymentVisitor {
-    type Value = NodeDeployment;
+impl<'de> Visitor<'de> for NodeEntryDeploymentVisitor {
+    type Value = NodeEntryDeployment;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("string or map")
     }
 
-    fn visit_str<E>(self, value: &str) -> Result<NodeDeployment, E>
+    fn visit_str<E>(self, value: &str) -> Result<NodeEntryDeployment, E>
     where
         E: serde::de::Error,
     {
         FromStr::from_str(value).map_err(serde::de::Error::custom)
     }
 
-    fn visit_map<M>(self, map: M) -> Result<NodeDeployment, M::Error>
+    fn visit_map<M>(self, map: M) -> Result<NodeEntryDeployment, M::Error>
     where
         M: MapAccess<'de>,
     {
@@ -139,11 +331,11 @@ impl<'de> Visitor<'de> for NodeDeploymentVisitor {
     }
 }
 
-fn deserialize_node_deployment<'de, D>(deserializer: D) -> Result<NodeDeployment, D::Error>
+fn deserialize_node_deployment<'de, D>(deserializer: D) -> Result<NodeEntryDeployment, D::Error>
 where
     D: Deserializer<'de>,
 {
-    deserializer.deserialize_any(NodeDeploymentVisitor(PhantomData))
+    deserializer.deserialize_any(NodeEntryDeploymentVisitor(PhantomData))
 }
 
 /// Variants of node deployment.
@@ -158,13 +350,24 @@ pub enum DeploymentKind {
 }
 
 /// Working directory alias path.
-#[derive(Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub struct WorkDirAlias(pub(crate) PathBuf);
 
 impl WorkDirAlias {
     /// Construct new working directory alias based on provided path.
-    pub(crate) fn new(path: impl Into<PathBuf>) -> Self {
+    pub fn new(path: impl Into<PathBuf>) -> Self {
         Self(path.into())
+    }
+
+    /// Try to use default path.
+    ///
+    /// Default path is user's home directory.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if user home directory cannot be determined.
+    pub fn try_default() -> Result<Self> {
+        Ok(Self(home_dir()?))
     }
 }
 
@@ -187,7 +390,9 @@ pub fn home_dir() -> Result<PathBuf> {
 ///
 /// - Will fail if user's home directory cannot be determined.
 pub fn config_dir() -> Result<PathBuf> {
-    dirs::config_dir().ok_or(anyhow!("Cannot determine path to configuration directory"))
+    dirs::config_dir()
+        .map(|path| path.join("ocd"))
+        .ok_or(anyhow!("Cannot determine path to configuration directory"))
 }
 
 #[cfg(test)]
@@ -199,83 +404,122 @@ mod tests {
     use sealed_test::prelude::*;
     use simple_test_case::test_case;
 
-    #[test_case(r#"work_dir_alias = "home_dir""#, WorkDirAlias::new("some/path"); "home_dir")]
-    #[test_case(r#"work_dir_alias = "config_dir""#, WorkDirAlias::new("some/path/.config"); "config_dir")]
+    #[test_case(
+        r#"
+            [settings]
+            work_dir_alias = "home_dir"
+        "#,
+        RootEntry {
+            settings: RootEntrySettings {
+                work_dir_alias: WorkDirAlias::new("some/path"),
+                excluded: None,
+            }
+        };
+        "home_dir"
+    )]
+    #[test_case(
+        r#"
+            [settings]
+            work_dir_alias = "config_dir"
+        "#,
+        RootEntry {
+            settings: RootEntrySettings {
+                work_dir_alias: WorkDirAlias::new("some/path/.config/ocd"),
+                excluded: None,
+            }
+        };
+        "config_dir"
+    )]
     #[sealed_test(env = [("HOME", "some/path"), ("XDG_CONFIG_HOME", "some/path/.config")])]
-    fn root_entry_valid_work_dir_alias(config: &str, expect: WorkDirAlias) -> Result<()> {
-        let root: RootEntry = toml::de::from_str(config)?;
-        pretty_assert_eq!(root.work_dir_alias, expect);
+    fn root_entry_valid_work_dir_alias(config: &str, expect: RootEntry) -> Result<()> {
+        let result: RootEntry = toml::de::from_str(config)?;
+        pretty_assert_eq!(result, expect);
         Ok(())
     }
 
     #[test]
     fn root_entry_invalid_work_dir_alias() {
-        let result: Result<RootEntry> =
-            toml::de::from_str(r#"work_dir_alias = "data_dir""#).with_context(|| "should fail!");
+        let config = r#"
+            [settings]
+            work_dir_alias = "data_dir"
+        "#;
+        let result: Result<RootEntry> = toml::de::from_str(config).with_context(|| "should fail!");
         assert!(result.is_err());
     }
 
     #[test_case(
         r#"
+            [settings]
             deployment = "normal"
             url = "https://some/url"
         "#,
         NodeEntry  {
-            deployment: NodeDeployment {
-                kind: DeploymentKind::Normal,
-                work_dir_alias: WorkDirAlias::default(),
-            },
-            url: "https://some/url".into(),
-            excluded: None,
-            dependencies: None
+            settings: NodeEntrySettings {
+                deployment: NodeEntryDeployment {
+                    kind: DeploymentKind::Normal,
+                    work_dir_alias: WorkDirAlias::try_default()?,
+                },
+                url: "https://some/url".into(),
+                excluded: None,
+                dependencies: None,
+            }
         };
         "str_normal"
     )]
     #[test_case(
         r#"
+            [settings]
             deployment = "bare_alias"
             url = "https://some/url"
         "#,
         NodeEntry  {
-            deployment: NodeDeployment {
-                kind: DeploymentKind::BareAlias,
-                work_dir_alias: WorkDirAlias::new("some/path"),
-            },
-            url: "https://some/url".into(),
-            excluded: None,
-            dependencies: None
+            settings: NodeEntrySettings {
+                deployment: NodeEntryDeployment {
+                    kind: DeploymentKind::BareAlias,
+                    work_dir_alias: WorkDirAlias::new("some/path"),
+                },
+                url: "https://some/url".into(),
+                excluded: None,
+                dependencies: None,
+            }
         };
         "str_bare_alias"
     )]
     #[test_case(
         r#"
+            [settings]
             deployment = { kind = "normal", work_dir_alias = "blah/blah" }
             url = "https://some/url"
         "#,
         NodeEntry  {
-            deployment: NodeDeployment {
-                kind: DeploymentKind::Normal,
-                work_dir_alias: WorkDirAlias::new("blah/blah"),
-            },
-            url: "https://some/url".into(),
-            excluded: None,
-            dependencies: None
+            settings: NodeEntrySettings {
+                deployment: NodeEntryDeployment {
+                    kind: DeploymentKind::Normal,
+                    work_dir_alias: WorkDirAlias::new("blah/blah"),
+                },
+                url: "https://some/url".into(),
+                excluded: None,
+                dependencies: None,
+            }
         };
         "map_normal"
     )]
     #[test_case(
         r#"
+            [settings]
             deployment = { kind = "bare_alias", work_dir_alias = "blah/blah" }
             url = "https://some/url"
         "#,
         NodeEntry  {
-            deployment: NodeDeployment {
-                kind: DeploymentKind::BareAlias,
-                work_dir_alias: WorkDirAlias::new("blah/blah"),
-            },
-            url: "https://some/url".into(),
-            excluded: None,
-            dependencies: None
+            settings: NodeEntrySettings {
+                deployment: NodeEntryDeployment {
+                    kind: DeploymentKind::BareAlias,
+                    work_dir_alias: WorkDirAlias::new("blah/blah"),
+                },
+                url: "https://some/url".into(),
+                excluded: None,
+                dependencies: None,
+            }
         };
         "map_bare_alias"
     )]
@@ -288,6 +532,7 @@ mod tests {
 
     #[test_case(
         r#"
+            [settings]
             deployment = "snafu"
             url = "https://some/url"
         "#;
@@ -295,6 +540,7 @@ mod tests {
     )]
     #[test_case(
         r#"
+            [settings]
             deployment = { kind = "snafu", work_dir_alias = "blah/blah" }
             url = "https://some/url"
         "#;

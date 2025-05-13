@@ -43,7 +43,7 @@
 
 //pub(crate) mod cmd;
 pub(crate) mod fs;
-pub(crate) mod model;
+pub mod model;
 //pub(crate) mod store;
 
 #[doc(hidden)]

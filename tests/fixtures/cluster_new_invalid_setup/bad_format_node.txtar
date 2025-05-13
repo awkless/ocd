@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+#
+# Should fail because node entry contains invalid TOML formatting.
+
+-- .config/ocd/root.toml --
+[settings]
+work_dir_alias = "config_dir"
+
+-- .config/ocd/nodes/fail.toml --
+[settings = deployment = "snafu"]

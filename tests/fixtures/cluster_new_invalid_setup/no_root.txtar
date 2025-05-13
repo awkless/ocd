@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+#
+# Should fail regardless of node entry, because no root has been defined.
+
+-- .config/ocd/nodes/fail.toml --
+[settings]
+deployment = "normal"
+url = "snafu"
