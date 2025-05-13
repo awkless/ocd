@@ -7,8 +7,8 @@
 //! OCD tool.
 
 use anyhow::{anyhow, Result};
-use config::{Config, File};
 use beau_collector::BeauCollector as _;
+use config::{Config, File};
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Deserializer,
@@ -83,9 +83,10 @@ impl Cluster {
             nodes.insert(name, node);
         }
 
-        let cluster = Self { root, nodes };
+        let mut cluster = Self { root, nodes };
         cluster.dependency_existence_check()?;
         cluster.acyclic_check()?;
+        cluster.expand_work_dir_aliases()?;
 
         Ok(cluster)
     }
@@ -97,7 +98,9 @@ impl Cluster {
         for node in self.nodes.values() {
             for dependency in node.settings.dependencies.iter().flatten() {
                 if !self.nodes.contains_key(dependency) {
-                    results.push(Err(anyhow!("Node dependency {dependency:?} is not defined in cluster")));
+                    results.push(Err(anyhow!(
+                        "Node dependency {dependency:?} is not defined in cluster"
+                    )));
                 } else {
                     results.push(Ok(()));
                 }
@@ -150,6 +153,19 @@ impl Cluster {
         }
         debug!("Topological sort of cluster nodes: {visited:?}");
 
+        Ok(())
+    }
+
+    #[instrument(skip(self), level = "debug")]
+    fn expand_work_dir_aliases(&mut self) -> Result<()> {
+        trace!("Expand working directory aliases of nodes");
+        for node in self.nodes.values_mut() {
+            let expand = shellexpand::full(
+                node.settings.deployment.work_dir_alias.0.to_string_lossy().as_ref(),
+            )?
+            .into_owned();
+            node.settings.deployment.work_dir_alias = WorkDirAlias::new(expand);
+        }
         Ok(())
     }
 }

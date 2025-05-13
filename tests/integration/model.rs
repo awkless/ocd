@@ -108,3 +108,19 @@ fn cluster_new_dependency_existence_check(case: &str, content: &str) -> Result<(
     }
     Ok(())
 }
+
+#[dir_cases("tests/fixtures/cluster_new_expand_work_dir_aliases")]
+#[sealed_test(env = [
+    ("XDG_CONFIG_HOME", ".config/ocd"),
+    ("EXPAND_ME1", "some/path"),
+    ("EXPAND_ME2", "some/path"),
+    ("EXPAND_ME3", "some/path"),
+])]
+fn cluster_new_expand_work_dir_aliases(_: &str, content: &str) -> Result<()> {
+    setup_cluster_env(content)?;
+    let cluster = Cluster::new()?;
+    for node in cluster.nodes.values() {
+        pretty_assert_eq!(node.settings.deployment.work_dir_alias, WorkDirAlias::new("some/path"));
+    }
+    Ok(())
+}
