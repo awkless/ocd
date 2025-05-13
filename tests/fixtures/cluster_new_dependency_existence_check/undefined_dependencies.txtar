@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+#
+# Dependency existence check for `Cluster::new` should fail this, because certain dependencies are
+# not defined in cluster.
+
+-- .config/ocd/root.toml --
+[settings]
+work_dir_alias = "config_dir"
+
+-- .config/ocd/nodes/node_00.toml --
+[settings]
+deployment = "bare_alias"
+url = "https://some/url"
+dependencies = ["foo", "bare", "snafu"]
+

@@ -90,3 +90,21 @@ fn cluster_new_acyclic_check(case: &str, content: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[dir_cases("tests/fixtures/cluster_new_dependency_existence_check")]
+#[sealed_test(env = [("XDG_CONFIG_HOME", ".config/ocd")])]
+fn cluster_new_dependency_existence_check(case: &str, content: &str) -> Result<()> {
+    setup_cluster_env(content)?;
+    match case {
+        "tests/fixtures/cluster_new_dependency_existence_check/defined_dependencies.txtar" => {
+            let result = Cluster::new();
+            assert!(result.is_ok());
+        }
+        "tests/fixtures/cluster_new_dependency_existence_check/undefined_dependencies.txtar" => {
+            let result = Cluster::new();
+            assert!(result.is_err());
+        }
+        &_ => unreachable!("No code for this yet!"),
+    }
+    Ok(())
+}

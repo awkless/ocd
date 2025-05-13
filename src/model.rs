@@ -8,6 +8,7 @@
 
 use anyhow::{anyhow, Result};
 use config::{Config, File};
+use beau_collector::BeauCollector as _;
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize, Deserializer,
@@ -83,9 +84,27 @@ impl Cluster {
         }
 
         let cluster = Self { root, nodes };
+        cluster.dependency_existence_check()?;
         cluster.acyclic_check()?;
 
         Ok(cluster)
+    }
+
+    #[instrument(skip(self), level = "debug")]
+    fn dependency_existence_check(&self) -> Result<()> {
+        trace!("Perform dependency existence check on cluster");
+        let mut results = Vec::new();
+        for node in self.nodes.values() {
+            for dependency in node.settings.dependencies.iter().flatten() {
+                if !self.nodes.contains_key(dependency) {
+                    results.push(Err(anyhow!("Node dependency {dependency:?} is not defined in cluster")));
+                } else {
+                    results.push(Ok(()));
+                }
+            }
+        }
+
+        results.into_iter().bcollect::<_>()
     }
 
     #[instrument(skip(self), level = "debug")]
