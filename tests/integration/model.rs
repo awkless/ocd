@@ -124,3 +124,47 @@ fn cluster_new_expand_work_dir_aliases(_: &str, content: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[track_caller]
+fn check_cluster_dependency_iter(target: &str, mut expect: Vec<(String, NodeEntry)>) -> Result<()> {
+    let cluster = Cluster::new()?;
+    let mut result: Vec<(String, NodeEntry)> = cluster
+        .dependency_iter(target)
+        .map(|(name, node)| (name.to_string(), node.clone()))
+        .collect();
+    result.sort_by(|(a, _), (b, _)| a.cmp(b));
+    expect.sort_by(|(a, _), (b, _)| a.cmp(b));
+    pretty_assert_eq!(result, expect);
+    Ok(())
+}
+
+#[dir_cases("tests/fixtures/cluster_dependency_iter")]
+#[sealed_test(env = [("XDG_CONFIG_HOME", ".config/ocd")])]
+fn cluster_dependency_iter(case: &str, content: &str) -> Result<()> {
+    setup_cluster_env(content)?;
+    match case {
+        "tests/fixtures/cluster_dependency_iter/full_dependency_path.txtar" => {
+            let expect = vec![
+                ("node_00".into(), NodeEntry::builder()?.url("https://some/url").build()),
+                ("node_01".into(), NodeEntry::builder()?.url("https://some/url").build()),
+                ("node_02".into(), NodeEntry::builder()?.url("https://some/url").build()),
+                (
+                    "node_03".into(),
+                    NodeEntry::builder()?
+                        .url("https://some/url")
+                        .dependencies(["node_00", "node_01", "node_02"])
+                        .build(),
+                ),
+            ];
+            check_cluster_dependency_iter("node_03", expect)?;
+        }
+        "tests/fixtures/cluster_dependency_iter/no_dependencies.txtar" => {
+            let expect = vec![
+                ("node_00".into(), NodeEntry::builder()?.url("https://some/url").build()),
+            ];
+            check_cluster_dependency_iter("node_00", expect)?;
+        }
+        &_ => unreachable!("No code for this case yet!"),
+    }
+    Ok(())
+}

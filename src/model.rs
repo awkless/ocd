@@ -91,6 +91,15 @@ impl Cluster {
         Ok(cluster)
     }
 
+    /// Iterate through node dependencies of target node entry inclusively.
+    ///
+    /// There is no specific ordering for node dependencies being iterated through.
+    pub fn dependency_iter(&self, node: impl Into<String>) -> DependencyIter<'_> {
+        let mut stack = VecDeque::new();
+        stack.push_front(node.into());
+        DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
+    }
+
     #[instrument(skip(self), level = "debug")]
     fn dependency_existence_check(&self) -> Result<()> {
         trace!("Perform dependency existence check on cluster");
@@ -170,6 +179,35 @@ impl Cluster {
     }
 }
 
+/// Iterator for node entry dependencies.
+///
+/// Obtain a full listing of nodes defined as dependencies of a given target node that was
+/// initially pushed into stack.
+#[derive(Debug)]
+pub struct DependencyIter<'cluster> {
+    graph: &'cluster HashMap<String, NodeEntry>,
+    visited: HashSet<String>,
+    stack: VecDeque<String>,
+}
+
+impl<'cluster> Iterator for DependencyIter<'cluster> {
+    type Item = (&'cluster str, &'cluster NodeEntry);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(node) = self.stack.pop_front() {
+            let (name, node) = self.graph.get_key_value(&node)?;
+            for dependency in node.settings.dependencies.iter().flatten() {
+                if !self.visited.contains(dependency) {
+                    self.stack.push_front(dependency.clone());
+                    self.visited.insert(dependency.clone());
+                }
+            }
+            return Some((name.as_str(), node));
+        }
+        None
+    }
+}
+
 /// Root entry of cluster definition.
 ///
 /// Any and all cluster's that OCD operates on must have a _root_. The root contains the cluster
@@ -189,7 +227,7 @@ impl Cluster {
 ///
 /// Root also has access to the file exclusion feature. The user can specify a list of sparsity
 /// rules to exclude certain files and directories from deployment.
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub struct RootEntry {
     /// Deployment options.
     pub settings: RootEntrySettings,
@@ -252,7 +290,7 @@ impl RootEntryBuilder {
 }
 
 /// Deployment options for root entry.
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub struct RootEntrySettings {
     /// Working directory alias option.
     #[serde(deserialize_with = "deserialize_root_work_dir_alias")]
@@ -286,7 +324,7 @@ where
 /// Thus, each node can have a listing of sparsity rules to exclude files and directories from
 /// deployment, and a listing of other nodes as dependencies that must be deployed with the node
 /// itself.
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub struct NodeEntry {
     pub settings: NodeEntrySettings,
 }
@@ -355,7 +393,7 @@ impl NodeEntryBuilder {
 }
 
 /// Settings for node entry.
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub struct NodeEntrySettings {
     /// Deployment method for node entry.
     #[serde(deserialize_with = "deserialize_node_deployment")]
@@ -381,7 +419,7 @@ pub struct NodeEntrySettings {
 /// Normal deployment simply ensures that the node entry has been cloned into repository store.
 /// Bare-alias deployment not only ensures that node entry has been cloned into repository store,
 /// but is also properly deployed to target working directory alias.
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub struct NodeEntryDeployment {
     /// Deployment kind.
     pub kind: DeploymentKind,
@@ -436,7 +474,7 @@ where
 }
 
 /// Variants of node deployment.
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "snake_case")]
 pub enum DeploymentKind {
     /// Node is normal, so make sure it got cloned.
@@ -447,7 +485,7 @@ pub enum DeploymentKind {
 }
 
 /// Working directory alias path.
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub struct WorkDirAlias(pub(crate) PathBuf);
 
 impl WorkDirAlias {
