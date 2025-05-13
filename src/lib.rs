@@ -42,7 +42,6 @@
 #![allow(dead_code)]
 
 //pub(crate) mod cmd;
-pub(crate) mod fs;
 pub mod model;
 //pub(crate) mod store;
 
