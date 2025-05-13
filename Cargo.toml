@@ -33,12 +33,12 @@ opt-level = 1
 [dependencies]
 anyhow = "1.0.98"
 auth-git2 = "0.5.7"
-clap = { version = "4.5.37", features = ["derive"] }
-config = { version = "0.15.11", defaults = false, features = ["toml"] }
+clap = { version = "4.5.38", features = ["derive"] }
+config = { version = "0.15.11", features = ["toml"] }
 dirs = "6.0.0"
 exitcode = "1.1.2"
 futures = "0.3.31"
-git2 = "0.20.1"
+git2 = "0.20.2"
 glob = "0.3.2"
 indicatif = "0.17.11"
 inquire = "0.7.5"
@@ -48,7 +48,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 shellexpand = "3.1.1"
 tabled = "0.19.0"
 thiserror = "2.0.12"
-tokio = { version = "1.44.2", features = ["full"] }
+tokio = { version = "1.45.0", features = ["full"] }
 toml = "0.8.22"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
@@ -57,5 +57,5 @@ tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 indoc = "2.0.6"
 pretty_assertions = "1.4.1"
 sealed_test = "1.1.0"
-simple_test_case = "1.2.0"
+simple_test_case = "1.3.0"
 simple_txtar = "1.1.0"
