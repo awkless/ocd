@@ -159,9 +159,8 @@ fn cluster_dependency_iter(case: &str, content: &str) -> Result<()> {
             check_cluster_dependency_iter("node_03", expect)?;
         }
         "tests/fixtures/cluster_dependency_iter/no_dependencies.txtar" => {
-            let expect = vec![
-                ("node_00".into(), NodeEntry::builder()?.url("https://some/url").build()),
-            ];
+            let expect =
+                vec![("node_00".into(), NodeEntry::builder()?.url("https://some/url").build())];
             check_cluster_dependency_iter("node_00", expect)?;
         }
         &_ => unreachable!("No code for this case yet!"),
