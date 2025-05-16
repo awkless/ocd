@@ -190,30 +190,6 @@ pub struct Node {
 }
 
 impl Node {
-    /// Clone node repository into repository store.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Error::Git2`] if repository failed to clone.
-    pub fn new_clone(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
-        let bar = ProgressBar::no_length();
-        let entry = RepoEntry::builder(name.as_ref())?
-            .url(&node.settings.url)
-            .deployment(
-                node.settings.deployment.kind.clone(),
-                node.settings.deployment.work_dir_alias.clone(),
-            )
-            .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
-                bar.clone(),
-            )))
-            .clone(&bar)?;
-        let mut deployer = RepoEntryDeployer::new(&entry);
-        deployer.add_excluded(node.settings.excluded.iter().flatten());
-        bar.finish_and_clear();
-
-        Ok(Self { entry, deployer })
-    }
-
     /// Initialize new node repository in repository store.
     ///
     /// # Errors
