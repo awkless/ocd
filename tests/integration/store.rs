@@ -11,6 +11,15 @@ use sealed_test::prelude::*;
 use simple_test_case::dir_cases;
 use run_script::run_script;
 
+#[sealed_test(env = [("XDG_DATA_HOME", ".local/share/ocd")])]
+fn smoke_root_new_init() -> Result<()> {
+    std::env::set_var("HOME", std::env::current_dir()?);
+    let root = Root::new_init()?;
+    assert!(root.path().exists());
+
+    Ok(())
+}
+
 #[dir_cases("tests/fixtures/root_new_open")]
 #[sealed_test(env = [
     ("XDG_CONFIG_HOME", ".config/ocd"),

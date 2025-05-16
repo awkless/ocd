@@ -102,7 +102,7 @@ impl Root {
     /// - Return [`Error::Git2`] if root could not be initialized.
     pub fn new_init() -> Result<Self> {
         let entry = RepoEntry::builder("root")?
-            .deployment(DeploymentKind::BareAlias, WorkDirAlias::try_default()?)
+            .deployment(DeploymentKind::BareAlias, WorkDirAlias::new(config_dir()?))
             .init()?;
         let deployer = RepoEntryDeployer::new(&entry);
 
