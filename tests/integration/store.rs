@@ -3,7 +3,7 @@
 
 use crate::{GitFixture, GitKind};
 
-use ocd::{store::*, model::*};
+use ocd::{model::*, store::*};
 
 use anyhow::Result;
 use run_script::run_script;
@@ -81,6 +81,38 @@ fn node_new_init() -> Result<()> {
     let node = Node::new_init("vim", &entry)?;
     assert!(node.path().exists());
     assert!(node.is_bare_alias());
+
+    Ok(())
+}
+
+#[dir_cases("tests/integration/fixtures/node_new_open")]
+#[sealed_test(env = [
+    ("XDG_CONFIG_HOME", ".config/ocd"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
+])]
+fn node_new_open(_: &str, content: &str) -> Result<()> {
+    let txtar = Archive::from(content);
+    let pwd = std::env::current_dir()?;
+    std::fs::create_dir_all(".config/ocd")?;
+    std::env::set_var("HOME", &pwd);
+
+    // Should just open it since node exists locally!
+    let git = GitFixture::new(".local/share/ocd/dwm", GitKind::Normal)?;
+    for file in txtar.iter() {
+        git.stage_and_commit(&file.name, &file.content)?;
+    }
+
+    let node = Node::new_open("dwm", &NodeEntry::builder()?.build())?;
+    assert!(node.path().exists());
+
+    // Should clone node, because it does not exist locally!
+    let git = GitFixture::new("forge/bash.git", GitKind::Normal)?;
+    for file in txtar.iter() {
+        git.stage_and_commit(&file.name, &file.content)?;
+    }
+
+    let node = Node::new_open("bash", &NodeEntry::builder()?.url("forge/bash.git").build())?;
+    assert!(node.path().exists());
 
     Ok(())
 }

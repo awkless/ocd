@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
+# SPDX-License-Identifier: MIT
+
+-- .dotfile --
+Configuration data for app goes here.
+
+-- LICENSE --
+License info goes here.
+
+-- README.md --
+Introduce dotfile configuration here.
