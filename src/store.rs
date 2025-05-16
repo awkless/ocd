@@ -161,7 +161,7 @@ impl Root {
     pub(crate) fn extract_root_config(&self) -> Result<RootEntry> {
         if self.entry.is_empty()? {
             warn!("Root is empty, defer to default settings");
-            return Ok(RootEntry::try_default()?);
+            return RootEntry::try_default();
         }
 
         let commit = self.entry.repository.head()?.peel_to_commit()?;

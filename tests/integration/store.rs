@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
+use crate::{GitFixture, GitKind};
 use ocd::store::*;
 use simple_txtar::Archive;
-use crate::{GitKind, GitFixture};
 
 use anyhow::Result;
+use run_script::run_script;
 use sealed_test::prelude::*;
 use simple_test_case::dir_cases;
-use run_script::run_script;
 
 #[sealed_test(env = [("XDG_DATA_HOME", ".local/share/ocd")])]
 fn root_new_init() -> Result<()> {
