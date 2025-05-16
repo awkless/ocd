@@ -164,7 +164,7 @@ impl Root {
     /// # Errors
     ///
     /// - Return [`Error::Git2`] for any failure to determine deployment of root.
-    pub(crate) fn is_deployed(&self, state: DeployState) -> Result<bool> {
+    pub fn is_deployed(&self, state: DeployState) -> Result<bool> {
         is_deployed(&self.entry, &self.deployer.excluded, state)
     }
 
@@ -1126,7 +1126,7 @@ fn bytes_to_path(bytes: &[u8]) -> PathBuf {
 
 /// Variants of repository index deployment state.
 #[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum DeployState {
+pub enum DeployState {
     /// Repository index is deployed without excluded files
     #[default]
     WithoutExcluded,

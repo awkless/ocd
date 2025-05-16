@@ -4,8 +4,9 @@
 # `Root::new_open` will open and deploy to home directory for deployed root.
 git --git-dir "$(pwd)/.local/share/ocd/root" --work-dir "$(pwd)" checkout
 
--- .config/ocd/cluster.toml --
-dir_alias = "home_dir"
+-- .config/ocd/root.toml --
+[settings]
+work_dir_alias = "home_dir"
 excluded = ["LICENSE*", "README*"]
 
 -- LICENSE --
