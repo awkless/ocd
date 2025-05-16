@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 use crate::{GitFixture, GitKind};
-use ocd::store::*;
-use simple_txtar::Archive;
+
+use ocd::{store::*, model::*};
 
 use anyhow::Result;
 use run_script::run_script;
 use sealed_test::prelude::*;
 use simple_test_case::dir_cases;
+use simple_txtar::Archive;
 
 #[sealed_test(env = [("XDG_DATA_HOME", ".local/share/ocd")])]
 fn root_new_init() -> Result<()> {
@@ -61,6 +62,25 @@ fn root_new_clone(_: &str, contents: &str) -> Result<()> {
     let root = Root::new_clone("forge/remote_root.git")?;
     assert!(root.path().exists());
     assert!(root.is_deployed(DeployState::WithoutExcluded)?);
+
+    Ok(())
+}
+
+#[sealed_test(env = [("XDG_DATA_HOME", ".local/share/ocd")])]
+fn node_new_init() -> Result<()> {
+    std::env::set_var("HOME", std::env::current_dir()?);
+
+    let entry = NodeEntry::builder()?.build();
+    let node = Node::new_init("dwm", &entry)?;
+    assert!(node.path().exists());
+    assert!(!node.is_bare_alias());
+
+    let entry = NodeEntry::builder()?
+        .deployment(DeploymentKind::BareAlias, WorkDirAlias::try_default()?)
+        .build();
+    let node = Node::new_init("vim", &entry)?;
+    assert!(node.path().exists());
+    assert!(node.is_bare_alias());
 
     Ok(())
 }
