@@ -15,6 +15,7 @@ use serde::{
 };
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    ffi::OsString,
     fmt,
     marker::PhantomData,
     path::PathBuf,
@@ -237,6 +238,15 @@ impl RootEntry {
     /// Construct new root entry through builder.
     pub fn builder() -> Result<RootEntryBuilder> {
         RootEntryBuilder::new()
+    }
+
+    pub fn try_default() -> Result<Self> {
+        Ok(RootEntry {
+            settings: RootEntrySettings {
+                work_dir_alias: WorkDirAlias::new(config_dir()?),
+                excluded: None,
+            },
+        })
     }
 }
 
@@ -484,6 +494,15 @@ pub enum DeploymentKind {
     BareAlias,
 }
 
+impl DeploymentKind {
+    pub fn is_bare_alias(&self) -> bool {
+        match self {
+            DeploymentKind::Normal => false,
+            DeploymentKind::BareAlias => true,
+        }
+    }
+}
+
 /// Working directory alias path.
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub struct WorkDirAlias(pub(crate) PathBuf);
@@ -503,6 +522,10 @@ impl WorkDirAlias {
     /// - Will fail if user home directory cannot be determined.
     pub fn try_default() -> Result<Self> {
         Ok(Self(home_dir()?))
+    }
+
+    pub fn to_os_string(&self) -> OsString {
+        OsString::from(self.0.to_string_lossy().into_owned())
     }
 }
 
@@ -528,6 +551,21 @@ pub fn config_dir() -> Result<PathBuf> {
     dirs::config_dir()
         .map(|path| path.join("ocd"))
         .ok_or(anyhow!("Cannot determine path to configuration directory"))
+}
+
+/// Get absolute path to OCD's data directory.
+///
+/// # Invariants
+///
+/// - OCD's standard data directory is always relative to user's home directory.
+///
+/// # Errors
+///
+/// - Will fail if user's home directory cannot be determined.
+pub fn data_dir() -> Result<PathBuf> {
+    dirs::data_dir()
+        .map(|path| path.join("ocd"))
+        .ok_or(anyhow!("Cannot determine path to data directory"))
 }
 
 #[cfg(test)]

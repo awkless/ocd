@@ -43,7 +43,7 @@
 
 //pub(crate) mod cmd;
 pub mod model;
-//pub(crate) mod store;
+pub mod store;
 
 #[doc(hidden)]
 //pub use cmd::Ocd;

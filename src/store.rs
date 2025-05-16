@@ -11,12 +11,11 @@
 //! repository store at the bottom.
 
 use crate::{
-    fs::{config_dir, data_dir},
     glob_match,
-    model::{Cluster, DeploymentKind, DirAlias, NodeEntry},
-    Error, Result,
+    model::{config_dir, data_dir, Cluster, DeploymentKind, NodeEntry, RootEntry, WorkDirAlias},
 };
 
+use anyhow::{anyhow, Result};
 use auth_git2::{GitAuthenticator, Prompter};
 use futures::{stream, StreamExt};
 use git2::{
@@ -29,7 +28,7 @@ use std::{
     collections::VecDeque,
     ffi::{OsStr, OsString},
     fmt::Write as FmtWrite,
-    fs::{remove_dir_all, File},
+    fs::File,
     io::Write as IoWrite,
     path::{Path, PathBuf},
     process::Command,
@@ -59,7 +58,7 @@ impl Root {
         let bar = ProgressBar::no_length();
         let entry = RepoEntry::builder("root")?
             .url(url.as_ref())
-            .deployment(DeploymentKind::BareAlias(DirAlias::default()))
+            .deployment(DeploymentKind::BareAlias, WorkDirAlias::new(config_dir()?))
             .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
                 bar.clone(),
             )))
@@ -68,9 +67,9 @@ impl Root {
 
         let deployer = RepoEntryDeployer::new(&entry);
         let mut root = Self { entry, deployer };
-        let cluster = root.extract_cluster_file()?;
+        let config = root.extract_root_config()?;
 
-        root.entry.set_deployment(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
+        root.entry.set_deployment(DeploymentKind::BareAlias, config.settings.work_dir_alias);
         root.deployer.deploy_with(BareAliasDeployment, &root.entry, DeployAction::Deploy)?;
 
         Ok(root)
@@ -88,9 +87,9 @@ impl Root {
         let entry = RepoEntry::builder("root")?.open()?;
         let deployer = RepoEntryDeployer::new(&entry);
         let mut root = Self { entry, deployer };
-        let cluster = root.extract_cluster_file()?;
+        let config = root.extract_root_config()?;
 
-        root.entry.set_deployment(DeploymentKind::BareAlias(cluster.root.dir_alias.clone()));
+        root.entry.set_deployment(DeploymentKind::BareAlias, config.settings.work_dir_alias);
         root.deployer.deploy_with(RootDeployment, &root.entry, DeployAction::Deploy)?;
 
         Ok(root)
@@ -103,7 +102,7 @@ impl Root {
     /// - Return [`Error::Git2`] if root could not be initialized.
     pub fn new_init() -> Result<Self> {
         let entry = RepoEntry::builder("root")?
-            .deployment(DeploymentKind::BareAlias(DirAlias::default()))
+            .deployment(DeploymentKind::BareAlias, WorkDirAlias::try_default()?)
             .init()?;
         let deployer = RepoEntryDeployer::new(&entry);
 
@@ -132,33 +131,32 @@ impl Root {
 
     /// Extract cluster definition from root.
     ///
-    /// Will first look at `.config/ocd/cluster.toml`, then `cluster.toml` in tree structure.
-    ///
     /// # Errors
     ///
     /// - Return [`Error::Git2`] if cluster could not be extracted.
     /// - Return [`Error::Toml`] if cluster contains invalid formatting.
-    pub(crate) fn extract_cluster_file(&self) -> Result<Cluster> {
+    pub(crate) fn extract_root_config(&self) -> Result<RootEntry> {
         if self.entry.is_empty()? {
-            warn!("Root is empty, no cluster.toml file to extract");
-            return Ok(Cluster::default());
+            warn!("Root is empty, defer to default settings");
+            return Ok(RootEntry::try_default()?);
         }
 
         let commit = self.entry.repository.head()?.peel_to_commit()?;
         let tree = commit.tree()?;
-        let blob = if let Some(entry) = tree.get_name("cluster.toml") {
+        let blob = if let Some(entry) = tree.get_name("root.toml") {
             entry.to_object(&self.entry.repository)?.peel_to_blob()?
         } else {
             let entry = tree
-                .get_path(PathBuf::from(".config/ocd/cluster.toml").as_path())
-                .map_err(|_| Error::NoClusterFile)?;
+                .get_path(PathBuf::from(".config/ocd/root.toml").as_path())
+                .map_err(|_| anyhow!("Cannot locate 'root.toml' file"))?;
             entry.to_object(&self.entry.repository)?.peel_to_blob()?
         };
 
-        let cluster: Cluster = String::from_utf8_lossy(blob.content()).into_owned().parse()?;
-        debug!("Extracted the following content from cluster.toml\n{cluster}");
+        let content = String::from_utf8_lossy(blob.content()).into_owned();
+        let root: RootEntry = toml::de::from_str(&content)?;
+        debug!("Extracted the following content from 'root.toml'\n{root:?}");
 
-        Ok(cluster)
+        Ok(root)
     }
 
     /// Determine if root is currently deployed at specific state.
@@ -168,37 +166,6 @@ impl Root {
     /// - Return [`Error::Git2`] for any failure to determine deployment of root.
     pub(crate) fn is_deployed(&self, state: DeployState) -> Result<bool> {
         is_deployed(&self.entry, &self.deployer.excluded, state)
-    }
-
-    /// Nuke entire cluster from existence.
-    ///
-    /// Undeploys root and all nodes, then deletes the configuration directory
-    /// and repository store itself.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Error::Io`] if deployment fails or directory deletion fails.
-    #[instrument(skip(self), level = "debug")]
-    pub fn nuke(&self) -> Result<()> {
-        let cluster: Cluster = self.extract_cluster_file()?;
-        self.deployer.deploy_with(BareAliasDeployment, &self.entry, DeployAction::Undeploy)?;
-
-        for (name, node) in &cluster.nodes {
-            if !data_dir()?.join(name).exists() {
-                warn!("Node {name:?} not found in repository store");
-                continue;
-            }
-
-            let repo = Node::new_open(name, node)?;
-            repo.deploy(DeployAction::Undeploy)?;
-        }
-
-        remove_dir_all(config_dir()?)?;
-        info!("Configuration directory removed");
-        remove_dir_all(data_dir()?)?;
-        info!("Data directory removed");
-
-        Ok(())
     }
 
     /// Get full path to root's gitdir.
@@ -231,14 +198,17 @@ impl Node {
     pub fn new_clone(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         let bar = ProgressBar::no_length();
         let entry = RepoEntry::builder(name.as_ref())?
-            .url(&node.url)
-            .deployment(node.deployment.clone())
+            .url(&node.settings.url)
+            .deployment(
+                node.settings.deployment.kind.clone(),
+                node.settings.deployment.work_dir_alias.clone(),
+            )
             .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
                 bar.clone(),
             )))
             .clone(&bar)?;
         let mut deployer = RepoEntryDeployer::new(&entry);
-        deployer.add_excluded(node.excluded.iter().flatten());
+        deployer.add_excluded(node.settings.excluded.iter().flatten());
         bar.finish_and_clear();
 
         Ok(Self { entry, deployer })
@@ -252,10 +222,14 @@ impl Node {
     #[instrument(skip(name, node), level = "debug")]
     pub fn new_init(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         info!("Initialize node repository {:?}", name.as_ref());
-        let entry =
-            RepoEntry::builder(name.as_ref())?.deployment(node.deployment.clone()).init()?;
+        let entry = RepoEntry::builder(name.as_ref())?
+            .deployment(
+                node.settings.deployment.kind.clone(),
+                node.settings.deployment.work_dir_alias.clone(),
+            )
+            .init()?;
         let mut deployer = RepoEntryDeployer::new(&entry);
-        deployer.add_excluded(node.excluded.iter().flatten());
+        deployer.add_excluded(node.settings.excluded.iter().flatten());
 
         Ok(Self { entry, deployer })
     }
@@ -270,14 +244,20 @@ impl Node {
     pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         let entry = if data_dir()?.join(name.as_ref()).exists() {
             RepoEntry::builder(name.as_ref())?
-                .url(&node.url)
-                .deployment(node.deployment.clone())
+                .url(&node.settings.url)
+                .deployment(
+                    node.settings.deployment.kind.clone(),
+                    node.settings.deployment.work_dir_alias.clone(),
+                )
                 .open()?
         } else {
             let bar = ProgressBar::no_length();
             let entry = RepoEntry::builder(name.as_ref())?
-                .url(&node.url)
-                .deployment(node.deployment.clone())
+                .url(&node.settings.url)
+                .deployment(
+                    node.settings.deployment.kind.clone(),
+                    node.settings.deployment.work_dir_alias.clone(),
+                )
                 .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
                     bar.clone(),
                 )))
@@ -287,7 +267,7 @@ impl Node {
         };
 
         let mut deployer = RepoEntryDeployer::new(&entry);
-        deployer.add_excluded(node.excluded.iter().flatten());
+        deployer.add_excluded(node.settings.excluded.iter().flatten());
 
         Ok(Self { entry, deployer })
     }
@@ -331,11 +311,11 @@ impl Node {
     ///
     /// - Will fail if deployment action fails for whatever reason.
     pub fn deploy(&self, action: DeployAction) -> Result<()> {
-        match self.entry.deployment {
+        match self.entry.deployment_kind {
             DeploymentKind::Normal => {
                 self.deployer.deploy_with(NormalDeployment, &self.entry, action)
             }
-            DeploymentKind::BareAlias(..) => {
+            DeploymentKind::BareAlias => {
                 self.deployer.deploy_with(BareAliasDeployment, &self.entry, action)
             }
         }
@@ -375,8 +355,11 @@ impl MultiNodeClone {
 
         for (name, node) in cluster.nodes.iter() {
             let repo = RepoEntryBuilder::new(name)?
-                .url(&node.url)
-                .deployment(node.deployment.clone())
+                .url(&node.settings.url)
+                .deployment(
+                    node.settings.deployment.kind.clone(),
+                    node.settings.deployment.work_dir_alias.clone(),
+                )
                 .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::MultiBar(
                     multi_bar.clone(),
                 )));
@@ -550,7 +533,8 @@ impl<'cluster> TablizeCluster<'cluster> {
 pub(crate) struct RepoEntry {
     name: String,
     repository: Repository,
-    deployment: DeploymentKind,
+    deployment_kind: DeploymentKind,
+    work_dir_alias: WorkDirAlias,
     authenticator: GitAuthenticator,
 }
 
@@ -561,8 +545,13 @@ impl RepoEntry {
     }
 
     /// Set deployment type for repository entry.
-    pub(crate) fn set_deployment(&mut self, kind: DeploymentKind) {
-        self.deployment = kind;
+    pub(crate) fn set_deployment(
+        &mut self,
+        deployment_kind: DeploymentKind,
+        work_dir_alias: WorkDirAlias,
+    ) {
+        self.deployment_kind = deployment_kind;
+        self.work_dir_alias = work_dir_alias;
     }
 
     /// Check if repository entry is empty.
@@ -591,7 +580,7 @@ impl RepoEntry {
 
     /// Check if repository is bare-alias.
     pub(crate) fn is_bare_alias(&self) -> bool {
-        self.repository.is_bare() && self.deployment.is_bare()
+        self.repository.is_bare() && self.deployment_kind.is_bare_alias()
     }
 
     /// Name of repository entry.
@@ -613,7 +602,6 @@ impl RepoEntry {
     /// - Will fail if HEAD connot be determined.
     pub(crate) fn current_branch(&self) -> Result<String> {
         let shorthand = self.repository.head()?.shorthand_bytes().to_vec();
-
         Ok(String::from_utf8_lossy(shorthand.as_slice()).into_owned())
     }
 
@@ -658,10 +646,15 @@ impl RepoEntry {
         args: impl IntoIterator<Item = impl Into<OsString>>,
     ) -> Vec<OsString> {
         let gitdir = self.repository.path().to_string_lossy().into_owned().into();
-        let path_args: Vec<OsString> = match &self.deployment {
+        let path_args: Vec<OsString> = match &self.deployment_kind {
             DeploymentKind::Normal => vec!["--git-dir".into(), gitdir],
-            DeploymentKind::BareAlias(dir_alias) => {
-                vec!["--git-dir".into(), gitdir, "--work-tree".into(), dir_alias.to_os_string()]
+            DeploymentKind::BareAlias => {
+                vec![
+                    "--git-dir".into(),
+                    gitdir,
+                    "--work-tree".into(),
+                    self.work_dir_alias.to_os_string(),
+                ]
             }
         };
 
@@ -677,18 +670,20 @@ impl std::fmt::Debug for RepoEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "RepoEntry {{ name: {:?}, ", self.name)?;
         write!(f, "repository: (git2 stuff), ")?;
-        write!(f, "deployment: {:?} ", self.deployment)?;
+        write!(f, "deployment_kind: {:?} ", self.deployment_kind)?;
+        write!(f, "work_dir_alias: {:?} ", self.work_dir_alias)?;
         writeln!(f, "authenticator: {:?} }}", self.authenticator)
     }
 }
 
 /// Builder for [`RepoEntry`].
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub(crate) struct RepoEntryBuilder {
     name: String,
     path: PathBuf,
     url: String,
-    deployment: DeploymentKind,
+    deployment_kind: DeploymentKind,
+    work_dir_alias: WorkDirAlias,
     authenticator: GitAuthenticator,
 }
 
@@ -697,13 +692,24 @@ impl RepoEntryBuilder {
     pub(crate) fn new(name: impl Into<String>) -> Result<Self> {
         let name = name.into();
         let path = data_dir()?.join(&name);
-
-        Ok(Self { name, path, ..Default::default() })
+        Ok(Self {
+            name,
+            path,
+            url: String::default(),
+            deployment_kind: DeploymentKind::BareAlias,
+            work_dir_alias: WorkDirAlias::try_default()?,
+            authenticator: GitAuthenticator::default(),
+        })
     }
 
-    /// Set deployment kind for repository entry.
-    pub(crate) fn deployment(mut self, kind: DeploymentKind) -> Self {
-        self.deployment = kind;
+    /// Set deployment settings for repository entry.
+    pub(crate) fn deployment(
+        mut self,
+        deployment_kind: DeploymentKind,
+        work_dir_alias: WorkDirAlias,
+    ) -> Self {
+        self.deployment_kind = deployment_kind;
+        self.work_dir_alias = work_dir_alias;
         self
     }
 
@@ -761,11 +767,11 @@ impl RepoEntryBuilder {
         fo.remote_callbacks(rc);
 
         let repository = RepoBuilder::new()
-            .bare(self.deployment.is_bare())
+            .bare(self.deployment_kind.is_bare_alias())
             .fetch_options(fo)
             .clone(&self.url, &self.path)?;
 
-        if self.deployment.is_bare() {
+        if self.deployment_kind.is_bare_alias() {
             let mut config = repository.config()?;
             config.set_str("status.showUntrackedFiles", "no")?;
             config.set_str("core.sparseCheckout", "true")?;
@@ -774,7 +780,8 @@ impl RepoEntryBuilder {
         Ok(RepoEntry {
             name: self.name,
             repository,
-            deployment: self.deployment,
+            deployment_kind: self.deployment_kind,
+            work_dir_alias: self.work_dir_alias,
             authenticator: self.authenticator,
         })
     }
@@ -786,11 +793,11 @@ impl RepoEntryBuilder {
     /// - Return [`Error::Git2`] for failure to initialize new repository.
     pub(crate) fn init(self) -> Result<RepoEntry> {
         let mut opts = RepositoryInitOptions::new();
-        opts.bare(self.deployment.is_bare());
+        opts.bare(self.deployment_kind.is_bare_alias());
         let repository = Repository::init_opts(&self.path, &opts)?;
 
-        if self.deployment.is_bare() {
-            let mut config = repository.config().map_err(Error::from)?;
+        if self.deployment_kind.is_bare_alias() {
+            let mut config = repository.config()?;
             config.set_str("status.showUntrackedFiles", "no")?;
             config.set_str("core.sparseCheckout", "true")?;
         }
@@ -798,7 +805,8 @@ impl RepoEntryBuilder {
         Ok(RepoEntry {
             name: self.name,
             repository,
-            deployment: self.deployment,
+            deployment_kind: self.deployment_kind,
+            work_dir_alias: self.work_dir_alias,
             authenticator: self.authenticator,
         })
     }
@@ -814,7 +822,8 @@ impl RepoEntryBuilder {
         Ok(RepoEntry {
             name: self.name,
             repository,
-            deployment: self.deployment,
+            deployment_kind: self.deployment_kind,
+            work_dir_alias: self.work_dir_alias,
             authenticator: self.authenticator,
         })
     }
@@ -891,7 +900,9 @@ impl Deployment for RootDeployment {
         }
 
         if !entry.is_bare_alias() {
-            return Err(Error::BareAliasMixup { name: entry.name().into() });
+            return Err(anyhow!(
+                "Root repository was somehow defined as normal when it should be bare-alias"
+            ));
         }
 
         let msg = match action {
@@ -951,7 +962,10 @@ impl Deployment for NormalDeployment {
         _action: DeployAction,
     ) -> Result<()> {
         if entry.is_bare_alias() {
-            return Err(Error::NormalMixup { name: entry.name().into() });
+            return Err(anyhow!(
+                "Repository {:?} defined as normal, but is bare-alias",
+                entry.name
+            ));
         }
 
         info!("Repository {:?} is normal, no deployment needed", entry.name());
@@ -983,7 +997,10 @@ impl Deployment for BareAliasDeployment {
         }
 
         if !entry.is_bare_alias() {
-            return Err(Error::BareAliasMixup { name: entry.name().into() });
+            return Err(anyhow!(
+                "Repository {:?} defined as bare-alias, but is normal",
+                entry.name
+            ));
         }
 
         let msg = match action {
@@ -1037,9 +1054,9 @@ fn is_deployed(entry: &RepoEntry, excluded: &SparseCheckout, state: DeployState)
         return Ok(false);
     }
 
-    let dir_alias = match &entry.deployment {
+    let work_dir_alias = match &entry.deployment_kind {
         DeploymentKind::Normal => return Ok(false),
-        DeploymentKind::BareAlias(dir_alias) => dir_alias,
+        DeploymentKind::BareAlias => &entry.work_dir_alias,
     };
 
     let mut entries: Vec<String> =
@@ -1051,7 +1068,7 @@ fn is_deployed(entry: &RepoEntry, excluded: &SparseCheckout, state: DeployState)
     }
 
     for entry in entries {
-        let path = dir_alias.0.join(entry);
+        let path = work_dir_alias.0.join(entry);
         if !path.exists() {
             return Ok(false);
         }
@@ -1120,7 +1137,7 @@ pub(crate) enum DeployState {
 
 /// Variants of repository index deployment.
 #[derive(Default, Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum DeployAction {
+pub enum DeployAction {
     /// Deploy to target worktree excluding unwanted files.
     #[default]
     Deploy,
@@ -1377,10 +1394,7 @@ fn syscall_non_interactive(
     }
 
     if !output.status.success() {
-        return Err(Error::SyscallNonInteractive {
-            program: cmd.as_ref().to_string_lossy().into_owned(),
-            message,
-        });
+        return Err(anyhow!("Command {:?} failed:\n{message}", cmd.as_ref()));
     }
 
     // INVARIANT: Chomp trailing newlines.
@@ -1400,9 +1414,7 @@ fn syscall_interactive(
     let status = Command::new(cmd.as_ref()).args(args).spawn()?.wait()?;
 
     if !status.success() {
-        return Err(Error::SyscallInteractive {
-            program: cmd.as_ref().to_string_lossy().into_owned(),
-        });
+        return Err(anyhow!("Command {:?} failed", cmd.as_ref()));
     }
 
     Ok(())
