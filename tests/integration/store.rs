@@ -19,7 +19,7 @@ fn root_new_init() -> Result<()> {
     Ok(())
 }
 
-#[dir_cases("tests/fixtures/root_new_open")]
+#[dir_cases("tests/integration/fixtures/root_new_open")]
 #[sealed_test(env = [
     ("XDG_CONFIG_HOME", ".config/ocd"),
     ("XDG_DATA_HOME", ".local/share/ocd"),
@@ -42,7 +42,7 @@ fn root_new_open(_: &str, content: &str) -> Result<()> {
     Ok(())
 }
 
-#[dir_cases("tests/fixtures/root_new_clone")]
+#[dir_cases("tests/integration/fixtures/root_new_clone")]
 #[sealed_test(env = [
     ("XDG_CONFIG_HOME", ".config/ocd"),
     ("XDG_DATA_HOME", ".local/share/ocd"),

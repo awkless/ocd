@@ -30,19 +30,19 @@ fn check_cluster_new(expect: Cluster) -> Result<()> {
     Ok(())
 }
 
-#[dir_cases("tests/fixtures/cluster_new_valid_setup")]
+#[dir_cases("tests/integration/fixtures/cluster_new_valid_setup")]
 #[sealed_test(env = [("XDG_CONFIG_HOME", ".config/ocd")])]
 fn cluster_new_valid_setup(case: &str, content: &str) -> Result<()> {
     setup_cluster_env(content)?;
     match case {
-        "tests/fixtures/cluster_new_valid_setup/root_only.txtar" => {
+        "tests/integration/fixtures/cluster_new_valid_setup/root_only.txtar" => {
             let expect = Cluster {
                 root: RootEntry::builder()?.deploy_to_home_dir()?.build(),
                 nodes: HashMap::default(),
             };
             check_cluster_new(expect)?;
         }
-        "tests/fixtures/cluster_new_valid_setup/root_and_nodes.txtar" => {
+        "tests/integration/fixtures/cluster_new_valid_setup/root_and_nodes.txtar" => {
             let mut nodes = HashMap::new();
             nodes.insert(
                 "vim".into(),
@@ -62,7 +62,7 @@ fn cluster_new_valid_setup(case: &str, content: &str) -> Result<()> {
     Ok(())
 }
 
-#[dir_cases("tests/fixtures/cluster_new_invalid_setup")]
+#[dir_cases("tests/integration/fixtures/cluster_new_invalid_setup")]
 #[sealed_test(env = [("XDG_CONFIG_HOME", ".config/ocd")])]
 fn cluster_new_invalid_setup(_: &str, content: &str) -> Result<()> {
     setup_cluster_env(content)?;
@@ -71,18 +71,18 @@ fn cluster_new_invalid_setup(_: &str, content: &str) -> Result<()> {
     Ok(())
 }
 
-#[dir_cases("tests/fixtures/cluster_new_acyclic_check")]
+#[dir_cases("tests/integration/fixtures/cluster_new_acyclic_check")]
 #[sealed_test(env = [("XDG_CONFIG_HOME", ".config/ocd")])]
 fn cluster_new_acyclic_check(case: &str, content: &str) -> Result<()> {
     setup_cluster_env(content)?;
     match case {
-        "tests/fixtures/cluster_new_acyclic_check/no_dependencies.txtar"
-        | "tests/fixtures/cluster_new_acyclic_check/full_dependencies.txtar" => {
+        "tests/integration/fixtures/cluster_new_acyclic_check/no_dependencies.txtar"
+        | "tests/integration/fixtures/cluster_new_acyclic_check/full_dependencies.txtar" => {
             let result = Cluster::new();
             assert!(result.is_ok());
         }
-        "tests/fixtures/cluster_new_acyclic_check/depend_self.txtar"
-        | "tests/fixtures/cluster_new_acyclic_check/full_cycle.txtar" => {
+        "tests/integration/fixtures/cluster_new_acyclic_check/depend_self.txtar"
+        | "tests/integration/fixtures/cluster_new_acyclic_check/full_cycle.txtar" => {
             let result = Cluster::new();
             assert!(result.is_err());
         }
@@ -91,16 +91,16 @@ fn cluster_new_acyclic_check(case: &str, content: &str) -> Result<()> {
     Ok(())
 }
 
-#[dir_cases("tests/fixtures/cluster_new_dependency_existence_check")]
+#[dir_cases("tests/integration/fixtures/cluster_new_dependency_existence_check")]
 #[sealed_test(env = [("XDG_CONFIG_HOME", ".config/ocd")])]
 fn cluster_new_dependency_existence_check(case: &str, content: &str) -> Result<()> {
     setup_cluster_env(content)?;
     match case {
-        "tests/fixtures/cluster_new_dependency_existence_check/defined_dependencies.txtar" => {
+        "tests/integration/fixtures/cluster_new_dependency_existence_check/defined_dependencies.txtar" => {
             let result = Cluster::new();
             assert!(result.is_ok());
         }
-        "tests/fixtures/cluster_new_dependency_existence_check/undefined_dependencies.txtar" => {
+        "tests/integration/fixtures/cluster_new_dependency_existence_check/undefined_dependencies.txtar" => {
             let result = Cluster::new();
             assert!(result.is_err());
         }
@@ -109,7 +109,7 @@ fn cluster_new_dependency_existence_check(case: &str, content: &str) -> Result<(
     Ok(())
 }
 
-#[dir_cases("tests/fixtures/cluster_new_expand_work_dir_aliases")]
+#[dir_cases("tests/integration/fixtures/cluster_new_expand_work_dir_aliases")]
 #[sealed_test(env = [
     ("XDG_CONFIG_HOME", ".config/ocd"),
     ("EXPAND_ME1", "some/path"),
@@ -138,12 +138,12 @@ fn check_cluster_dependency_iter(target: &str, mut expect: Vec<(String, NodeEntr
     Ok(())
 }
 
-#[dir_cases("tests/fixtures/cluster_dependency_iter")]
+#[dir_cases("tests/integration/fixtures/cluster_dependency_iter")]
 #[sealed_test(env = [("XDG_CONFIG_HOME", ".config/ocd")])]
 fn cluster_dependency_iter(case: &str, content: &str) -> Result<()> {
     setup_cluster_env(content)?;
     match case {
-        "tests/fixtures/cluster_dependency_iter/full_dependency_path.txtar" => {
+        "tests/integration/fixtures/cluster_dependency_iter/full_dependency_path.txtar" => {
             let expect = vec![
                 ("node_00".into(), NodeEntry::builder()?.url("https://some/url").build()),
                 ("node_01".into(), NodeEntry::builder()?.url("https://some/url").build()),
@@ -158,7 +158,7 @@ fn cluster_dependency_iter(case: &str, content: &str) -> Result<()> {
             ];
             check_cluster_dependency_iter("node_03", expect)?;
         }
-        "tests/fixtures/cluster_dependency_iter/no_dependencies.txtar" => {
+        "tests/integration/fixtures/cluster_dependency_iter/no_dependencies.txtar" => {
             let expect =
                 vec![("node_00".into(), NodeEntry::builder()?.url("https://some/url").build())];
             check_cluster_dependency_iter("node_00", expect)?;

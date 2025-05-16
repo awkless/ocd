@@ -118,6 +118,15 @@ impl Root {
         self.deployer.deploy_with(RootDeployment, &self.entry, action)
     }
 
+    /// Determine if root is currently deployed at specific state.
+    ///
+    /// # Errors
+    ///
+    /// - Return [`Error::Git2`] for any failure to determine deployment of root.
+    pub fn is_deployed(&self, state: DeployState) -> Result<bool> {
+        is_deployed(&self.entry, &self.deployer.excluded, state)
+    }
+
     /// Current branch of root repository.
     ///
     /// Uses lossy UTF-8 variation of branch pointed to by HEAD.
@@ -127,6 +136,20 @@ impl Root {
     /// - Return [`Error::Git2`] if branch could not be determined.
     pub fn current_branch(&self) -> Result<String> {
         self.entry.current_branch()
+    }
+
+    /// Get full path to root's gitdir.
+    pub fn path(&self) -> &Path {
+        self.entry.path()
+    }
+
+    /// Make interactive system call to user's Git binary.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if system call fails, or Git was given invalid arguments.
+    pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
+        self.entry.gitcall_interactive(args)
     }
 
     /// Extract cluster definition from root.
@@ -157,29 +180,6 @@ impl Root {
         debug!("Extracted the following content from 'root.toml'\n{root:?}");
 
         Ok(root)
-    }
-
-    /// Determine if root is currently deployed at specific state.
-    ///
-    /// # Errors
-    ///
-    /// - Return [`Error::Git2`] for any failure to determine deployment of root.
-    pub fn is_deployed(&self, state: DeployState) -> Result<bool> {
-        is_deployed(&self.entry, &self.deployer.excluded, state)
-    }
-
-    /// Get full path to root's gitdir.
-    pub fn path(&self) -> &Path {
-        self.entry.path()
-    }
-
-    /// Make interactive system call to user's Git binary.
-    ///
-    /// # Errors
-    ///
-    /// Will fail if system call fails, or Git was given invalid arguments.
-    pub fn gitcall(&self, args: impl IntoIterator<Item = impl Into<OsString>>) -> Result<()> {
-        self.entry.gitcall_interactive(args)
     }
 }
 
