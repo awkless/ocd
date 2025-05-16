@@ -3,8 +3,6 @@
 
 // use ocd::{exit_status_from_error, Ocd};
 
-use anyhow::{Context, Result};
-use clap::Parser;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 #[tokio::main]
