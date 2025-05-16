@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 # SPDX-License-Identifier: MIT
 
--- cluster.toml --
-dir_alias = "home_dir"
+-- root.toml --
+[settings]
+work_dir_alias = "config_dir"
 excluded = ["LICENSE*", "README*"]
 
 -- LICENSE --
