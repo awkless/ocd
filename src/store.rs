@@ -17,6 +17,7 @@ use crate::{
 
 use anyhow::{anyhow, Result};
 use auth_git2::{GitAuthenticator, Prompter};
+use beau_collector::BeauCollector as _;
 use futures::{stream, StreamExt};
 use git2::{
     build::RepoBuilder, Config, FetchOptions, ObjectType, RemoteCallbacks, Repository,
@@ -376,9 +377,12 @@ impl MultiNodeClone {
                 bars.push(bar.clone());
 
                 async move {
+                    let node_name = node.name.clone();
                     let result = tokio::spawn(async move { node.clone(&bar) }).await;
                     let mut guard = results.lock().unwrap();
-                    guard.push(result);
+                    guard.push(
+                        result.map_err(|err| anyhow!("Failed to clone {node_name:?}: {err:?}")),
+                    );
                     drop(guard);
                 }
             })
@@ -389,9 +393,8 @@ impl MultiNodeClone {
             bar.finish_and_clear();
         }
 
-        // TODO: Report all failures instead of the first occurance of a failure.
         let results = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
-        let _ = results.into_iter().flatten().collect::<Result<Vec<_>, _>>()?;
+        let _ = results.into_iter().flatten().bcollect::<Vec<_>>()?;
 
         Ok(())
     }
