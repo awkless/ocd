@@ -181,7 +181,8 @@ fn node_new_init() -> Result<()> {
     Ok(())
 }
 
-#[dir_cases("tests/integration/fixtures/node_new_open")] #[sealed_test(env = [
+#[dir_cases("tests/integration/fixtures/node_new_open")]
+#[sealed_test(env = [
     ("XDG_CONFIG_HOME", ".config/ocd"),
     ("XDG_DATA_HOME", ".local/share/ocd"),
 ])]
