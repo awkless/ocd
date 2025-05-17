@@ -268,7 +268,7 @@ impl Node {
     /// # Errors
     ///
     /// - Return [`Error::Git2`] for any failure to determine deployment of node.
-    pub(crate) fn is_deployed(&self, state: DeployState) -> Result<bool> {
+    pub fn is_deployed(&self, state: DeployState) -> Result<bool> {
         is_deployed(&self.entry, &self.deployer.excluded, state)
     }
 
@@ -987,7 +987,7 @@ impl Deployment for BareAliasDeployment {
                 }
 
                 excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
-                format!("deploy {:?}", entry.name)
+                format!("Deploy {:?}", entry.name)
             }
             DeployAction::DeployAll => {
                 if is_deployed(entry, excluded, DeployState::WithExcluded)? {
@@ -996,7 +996,7 @@ impl Deployment for BareAliasDeployment {
                 }
 
                 excluded.write_rules(ExcludeAction::IncludeAll)?;
-                format!("deploy all of {:?}", entry.name)
+                format!("Deploy all of {:?}", entry.name)
             }
             DeployAction::Undeploy => {
                 if !is_deployed(entry, excluded, DeployState::WithoutExcluded)? {
@@ -1005,16 +1005,16 @@ impl Deployment for BareAliasDeployment {
                 }
 
                 excluded.write_rules(ExcludeAction::ExcludeAll)?;
-                format!("undeploy {:?}", entry.name)
+                format!("Undeploy {:?}", entry.name)
             }
             DeployAction::UndeployExcludes => {
-                if !is_deployed(entry, excluded, DeployState::WithExcluded)? {
-                    warn!("Repository {:?} excluded files are undeployed", entry.name);
+                if is_deployed(entry, excluded, DeployState::WithExcluded)? {
+                    warn!("Repository {:?} excluded files are already undeployed", entry.name);
                     return Ok(());
                 }
 
                 excluded.write_rules(ExcludeAction::ExcludeUnwanted)?;
-                format!("undeploy excluded files of {:?}", entry.name)
+                format!("Undeploy excluded files of {:?}", entry.name)
             }
         };
 

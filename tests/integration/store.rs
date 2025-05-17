@@ -116,3 +116,119 @@ fn node_new_open(_: &str, content: &str) -> Result<()> {
 
     Ok(())
 }
+
+#[dir_cases("tests/integration/fixtures/node_deploy")]
+#[sealed_test(env = [
+    ("XDG_CONFIG_HOME", ".config/ocd"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
+])]
+fn node_deploy_action(_: &str, content: &str) -> Result<()> {
+    let pwd = std::env::current_dir()?;
+    std::fs::create_dir_all(".config/ocd")?;
+    std::env::set_var("HOME", &pwd);
+
+    let txtar = Archive::from(content);
+    let git = GitFixture::new(".local/share/ocd/node", GitKind::Bare)?;
+    for file in txtar.iter() {
+        git.stage_and_commit(&file.name, &file.content)?;
+    }
+    run_script!(&txtar.comment())?;
+
+    let entry = NodeEntry::builder()?
+        .deployment(DeploymentKind::BareAlias, WorkDirAlias::new(&pwd))
+        .excluded(["README*", "LICENSE*"])
+        .build();
+    let node = Node::new_open("node", &entry)?;
+
+    node.deploy(DeployAction::Deploy)?;
+    assert!(node.is_deployed(DeployState::WithoutExcluded)?);
+
+    Ok(())
+}
+
+#[dir_cases("tests/integration/fixtures/node_deploy")]
+#[sealed_test(env = [
+    ("XDG_CONFIG_HOME", ".config/ocd"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
+])]
+fn node_undeploy_action(_: &str, content: &str) -> Result<()> {
+    let pwd = std::env::current_dir()?;
+    std::fs::create_dir_all(".config/ocd")?;
+    std::env::set_var("HOME", &pwd);
+
+    let txtar = Archive::from(content);
+    let git = GitFixture::new(".local/share/ocd/node", GitKind::Bare)?;
+    for file in txtar.iter() {
+        git.stage_and_commit(&file.name, &file.content)?;
+    }
+    run_script!(&txtar.comment())?;
+
+    let entry = NodeEntry::builder()?
+        .deployment(DeploymentKind::BareAlias, WorkDirAlias::new(&pwd))
+        .excluded(["README*", "LICENSE*"])
+        .build();
+    let node = Node::new_open("node", &entry)?;
+
+    node.deploy(DeployAction::Undeploy)?;
+    assert!(!node.is_deployed(DeployState::WithExcluded)?);
+
+    Ok(())
+}
+
+#[dir_cases("tests/integration/fixtures/node_deploy")]
+#[sealed_test(env = [
+    ("XDG_CONFIG_HOME", ".config/ocd"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
+])]
+fn node_deploy_all_action(_: &str, content: &str) -> Result<()> {
+    let pwd = std::env::current_dir()?;
+    std::fs::create_dir_all(".config/ocd")?;
+    std::env::set_var("HOME", &pwd);
+
+    let txtar = Archive::from(content);
+    let git = GitFixture::new(".local/share/ocd/node", GitKind::Bare)?;
+    for file in txtar.iter() {
+        git.stage_and_commit(&file.name, &file.content)?;
+    }
+    run_script!(&txtar.comment())?;
+
+    let entry = NodeEntry::builder()?
+        .deployment(DeploymentKind::BareAlias, WorkDirAlias::new(&pwd))
+        .excluded(["README*", "LICENSE*"])
+        .build();
+    let node = Node::new_open("node", &entry)?;
+
+    node.deploy(DeployAction::DeployAll)?;
+    assert!(node.is_deployed(DeployState::WithExcluded)?);
+
+    Ok(())
+}
+
+#[dir_cases("tests/integration/fixtures/node_deploy")]
+#[sealed_test(env = [
+    ("XDG_CONFIG_HOME", ".config/ocd"),
+    ("XDG_DATA_HOME", ".local/share/ocd"),
+])]
+fn node_undeploy_excluded_action(_: &str, content: &str) -> Result<()> {
+    let pwd = std::env::current_dir()?;
+    std::fs::create_dir_all(".config/ocd")?;
+    std::env::set_var("HOME", &pwd);
+
+    let txtar = Archive::from(content);
+    let git = GitFixture::new(".local/share/ocd/node", GitKind::Bare)?;
+    for file in txtar.iter() {
+        git.stage_and_commit(&file.name, &file.content)?;
+    }
+    run_script!(&txtar.comment())?;
+
+    let entry = NodeEntry::builder()?
+        .deployment(DeploymentKind::BareAlias, WorkDirAlias::new(&pwd))
+        .excluded(["README*", "LICENSE*"])
+        .build();
+    let node = Node::new_open("node", &entry)?;
+
+    node.deploy(DeployAction::UndeployExcludes)?;
+    assert!(node.is_deployed(DeployState::WithoutExcluded)?);
+
+    Ok(())
+}
