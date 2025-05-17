@@ -31,7 +31,6 @@ skip = [
   { name = "windows_x86_64_gnu", version = "0.48.5" },
   { name = "windows_x86_64_gnullvm", version = "0.48.5" },
   { name = "windows_x86_64_msvc", version = "0.48.5" },
-  { name = "zerocopy", version = "0.7.35" },
 ]
 
 [sources]
@@ -45,5 +44,8 @@ allow = [
   "MIT",
   "Unicode-3.0",
   "MPL-2.0",
+  "ISC",
+  "Zlib",
   "BSD-2-Clause",
+  "BSD-3-Clause",
 ]
