@@ -17,7 +17,7 @@ fn setup_cluster_env(content: &str) -> Result<()> {
 
     let txtar = Archive::from(content);
     for file in txtar.iter() {
-        write(&file.name, &file.content.as_bytes())?;
+        write(&file.name, file.content.as_bytes())?;
     }
 
     Ok(())
