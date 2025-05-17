@@ -37,7 +37,6 @@ beau_collector = "0.2.1"
 clap = { version = "4.5.38", features = ["derive"] }
 config = { version = "0.15.11", features = ["toml"] }
 dirs = "6.0.0"
-exitcode = "1.1.2"
 futures = "0.3.31"
 git2 = "0.20.2"
 glob = "0.3.2"

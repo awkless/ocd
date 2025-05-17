@@ -15,8 +15,6 @@ async fn main() {
     //     tracing::error!("{error:?}");
     //     std::process::exit(exit_status_from_error(error));
     // }
-
-    std::process::exit(exitcode::OK);
 }
 
 // async fn run() -> Result<()> {
