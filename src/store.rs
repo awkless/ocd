@@ -39,6 +39,7 @@ use std::{
 use tracing::{debug, info, instrument, warn};
 
 /// Root entry in repository store.
+#[derive(Debug)]
 pub struct Root {
     entry: RepoEntry,
     deployer: RepoEntryDeployer,
@@ -185,6 +186,7 @@ impl Root {
 }
 
 /// Manage node repository in repository store.
+#[derive(Debug)]
 pub struct Node {
     entry: RepoEntry,
     deployer: RepoEntryDeployer,
@@ -310,6 +312,7 @@ impl Node {
 }
 
 /// Clone all nodes in cluster definition asynchronously.
+#[derive(Debug)]
 pub struct MultiNodeClone {
     nodes: Vec<RepoEntryBuilder>,
     multi_bar: MultiProgress,
@@ -330,7 +333,7 @@ impl MultiNodeClone {
         let multi_bar = MultiProgress::new();
         let mut nodes: Vec<RepoEntryBuilder> = Vec::new();
 
-        for (name, node) in cluster.nodes.iter() {
+        for (name, node) in &cluster.nodes {
             let repo = RepoEntryBuilder::new(name)?
                 .url(&node.settings.url)
                 .deployment(
@@ -401,6 +404,7 @@ impl MultiNodeClone {
 }
 
 /// Tablize repository entry information in cluster.
+#[derive(Debug)]
 pub struct TablizeCluster<'cluster> {
     root: &'cluster Root,
     cluster: &'cluster Cluster,
@@ -819,6 +823,7 @@ pub(crate) trait Deployment {
 }
 
 /// Handler for repository deployment strategies.
+#[derive(Debug)]
 pub(crate) struct RepoEntryDeployer {
     excluded: SparseCheckout,
 }
@@ -1042,8 +1047,8 @@ fn is_deployed(entry: &RepoEntry, excluded: &SparseCheckout, state: DeployState)
         list_file_paths(entry)?.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
     if state == DeployState::WithoutExcluded {
-        let excludes = glob_match(excluded.iter(), entries.iter());
-        entries.retain(|x| !excludes.contains(x));
+        let result = glob_match(excluded.iter(), entries.iter());
+        entries.retain(|x| !result.contains(x));
     }
 
     for entry in entries {
@@ -1067,7 +1072,7 @@ fn list_file_paths(entry: &RepoEntry) -> Result<Vec<PathBuf>> {
     // Iterate through all trees of repository entry, inserting full paths to each file blob in a
     // given tree until queue is exhausted.
     while let Some((tree, path)) = trees_and_paths.pop_front() {
-        for tree_entry in tree.iter() {
+        for tree_entry in &tree {
             match tree_entry.kind() {
                 // Insert tree object into next iteration of queue...
                 Some(ObjectType::Tree) => {
@@ -1293,7 +1298,7 @@ impl SparseCheckout {
                 excluded
             }
             ExcludeAction::IncludeAll => "/*".into(),
-            ExcludeAction::ExcludeAll => "".into(),
+            ExcludeAction::ExcludeAll => String::default(),
         };
 
         let mut file = File::create(&self.sparse_path)?;

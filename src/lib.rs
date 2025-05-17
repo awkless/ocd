@@ -40,6 +40,13 @@
 //! [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles#Tracking_dotfiles_directly_with_Git
 
 #![allow(dead_code)]
+#![warn(
+    clippy::complexity,
+    clippy::correctness,
+    missing_debug_implementations,
+    rust_2021_compatibility
+)]
+#![doc(issue_tracker_base_url = "https://github.com/awkless/ocd/issues")]
 
 //pub(crate) mod cmd;
 pub mod model;
@@ -95,8 +102,8 @@ pub(crate) fn glob_match(
 mod tests {
     use super::*;
 
-    use simple_test_case::test_case;
     use pretty_assertions::assert_eq as pretty_assert_eq;
+    use simple_test_case::test_case;
 
     #[test_case(
         vec!["*sh".into(), "[f-g]oo".into(), "d?o".into()],

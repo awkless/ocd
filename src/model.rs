@@ -236,10 +236,19 @@ pub struct RootEntry {
 
 impl RootEntry {
     /// Construct new root entry through builder.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if configuration directory path cannot be determined.
     pub fn builder() -> Result<RootEntryBuilder> {
         RootEntryBuilder::new()
     }
 
+    /// Use default settings for root entry.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if configuration directory cannot be determined.
     pub fn try_default() -> Result<Self> {
         Ok(RootEntry {
             settings: RootEntrySettings {
@@ -258,6 +267,10 @@ pub struct RootEntryBuilder {
 
 impl RootEntryBuilder {
     /// Construct new builder for [`RootEntry`].
+    ///
+    /// # Errors
+    ///
+    /// Will fail if configuration directory cannot be determined.
     pub fn new() -> Result<Self> {
         Ok(Self {
             settings: RootEntrySettings {
@@ -341,6 +354,10 @@ pub struct NodeEntry {
 
 impl NodeEntry {
     /// Construct new node entry through builder.
+    ///
+    /// # Errors
+    ///
+    /// Will fail if default working directory alias cannot be determined.
     pub fn builder() -> Result<NodeEntryBuilder> {
         NodeEntryBuilder::new()
     }
@@ -357,7 +374,7 @@ impl NodeEntryBuilder {
     ///
     /// # Errors
     ///
-    /// - Will fail if default working directory alias cannot be determined.
+    /// Will fail if default working directory alias cannot be determined.
     pub fn new() -> Result<Self> {
         Ok(Self {
             settings: NodeEntrySettings {
