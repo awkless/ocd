@@ -48,14 +48,13 @@ pub struct Root {
 impl Root {
     /// Clone root repository from remote URL.
     ///
-    /// Will deploy root repository by extracting internal cluster configuration
-    /// file.
+    /// Will deploy root repository by extracting internal root configuration file.
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] if repository cannot be cloned, or cluster
-    ///   definition could not be extracted.
-    /// - Return [`Error::Io`] if deployment fails.
+    /// - Will fail if clone itself fails.
+    /// - Will fail if root configuration file could not be extracted.
+    /// - Will fail if deployment of root fails.
     pub fn new_clone(url: impl AsRef<str>) -> Result<Self> {
         let bar = ProgressBar::no_length();
         let entry = RepoEntry::builder("root")?
@@ -83,8 +82,8 @@ impl Root {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] if root could not be opened.
-    /// - Return [`Error::Io`] if deployment fails.
+    /// - Will fail if root could not be opened.
+    /// - Will fail if deployment check fails.
     pub fn new_open() -> Result<Self> {
         let entry = RepoEntry::builder("root")?.open()?;
         let deployer = RepoEntryDeployer::new(&entry);
@@ -101,7 +100,7 @@ impl Root {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] if root could not be initialized.
+    /// Will fail if root could be initialized for whatever reason.
     pub fn new_init() -> Result<Self> {
         let entry = RepoEntry::builder("root")?
             .deployment(DeploymentKind::BareAlias, WorkDirAlias::new(config_dir()?))
@@ -113,9 +112,11 @@ impl Root {
 
     /// Deploy root according to given deployment action.
     ///
+    /// Ensures that root cannot be undeployed.
+    ///
     /// # Errors
     ///
-    /// - Return [`Error::Io`] if deployment fails.
+    /// Will fail if deployment for given action fails for whatever reason.
     pub fn deploy(&self, action: DeployAction) -> Result<()> {
         self.deployer.deploy_with(RootDeployment, &self.entry, action)
     }
@@ -124,7 +125,8 @@ impl Root {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] for any failure to determine deployment of root.
+    /// Will fail if any given Git operation needed for this check to work fails for whatever
+    /// reason.
     pub fn is_deployed(&self, state: DeployState) -> Result<bool> {
         is_deployed(&self.entry, &self.deployer.excluded, state)
     }
@@ -135,7 +137,7 @@ impl Root {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] if branch could not be determined.
+    /// Will fail if there is no index to use.
     pub fn current_branch(&self) -> Result<String> {
         self.entry.current_branch()
     }
@@ -154,12 +156,15 @@ impl Root {
         self.entry.gitcall_interactive(args)
     }
 
-    /// Extract cluster definition from root.
+    /// Extract root configuration file.
+    ///
+    /// Extracts root configuration file based on most recent commit pointed to by HEAD. Will check
+    /// for "root.toml" at top-level of repository, then ".config/ocd/root.toml" next. If root
+    /// configuration file does not exist at either of these locations, then function errors out.
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] if cluster could not be extracted.
-    /// - Return [`Error::Toml`] if cluster contains invalid formatting.
+    ///  Will fail if root configuration file cannot be located at expected areas of repository.
     pub(crate) fn extract_root_config(&self) -> Result<RootEntry> {
         if self.entry.is_empty()? {
             warn!("Root is empty, defer to default settings");
@@ -197,7 +202,7 @@ impl Node {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] if repository could not be initialized.
+    /// Will fail if repository could not be initialized for whatever reason.
     #[instrument(skip(name, node), level = "debug")]
     pub fn new_init(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         info!("Initialize node repository {:?}", name.as_ref());
@@ -219,7 +224,8 @@ impl Node {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] if repository could not be opened or cloned.
+    /// - Will fail if clone itself fails when node is found to be missing.
+    /// - Will fail if existing node cannot be opened for whatever reason.
     pub fn new_open(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         let entry = if data_dir()?.join(name.as_ref()).exists() {
             RepoEntry::builder(name.as_ref())?
@@ -270,7 +276,8 @@ impl Node {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] for any failure to determine deployment of node.
+    /// Will fail if any given Git operation needed for this check to work fails for whatever
+    /// reason.
     pub fn is_deployed(&self, state: DeployState) -> Result<bool> {
         is_deployed(&self.entry, &self.deployer.excluded, state)
     }
@@ -279,7 +286,7 @@ impl Node {
     ///
     /// # Errors
     ///
-    /// - Will fail if HEAD is not pointing to a named branch.
+    /// Will fail if there is no index to use.
     pub fn current_branch(&self) -> Result<String> {
         self.entry.current_branch()
     }
@@ -288,7 +295,7 @@ impl Node {
     ///
     /// # Errors
     ///
-    /// - Will fail if deployment action fails for whatever reason.
+    /// Will fail if deployment action fails for whatever reason.
     pub fn deploy(&self, action: DeployAction) -> Result<()> {
         match self.entry.deployment_kind {
             DeploymentKind::Normal => {
@@ -366,9 +373,10 @@ impl MultiNodeClone {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] for clone task failure.
+    /// - Will fail for clone task failure.
     ///     - Failed clone tasks will not cancel any active clone tasks that are not failing.
     ///     - Results are only collected until _all_ clone tasks have finished.
+    ///     - All errors are reported in one-shot.
     pub async fn clone_all(self) -> Result<()> {
         let mut bars = Vec::new();
         let results = Arc::new(Mutex::new(Vec::new()));
@@ -396,6 +404,7 @@ impl MultiNodeClone {
             bar.finish_and_clear();
         }
 
+        // INVARIANT: Collect and report _all_ failures encountered.
         let results = Arc::try_unwrap(results).unwrap().into_inner().unwrap();
         let _ = results.into_iter().flatten().bcollect::<Vec<_>>()?;
 
@@ -773,7 +782,7 @@ impl RepoEntryBuilder {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] for failure to initialize new repository.
+    /// Will fail if repository cannot be  initialized properly.
     pub(crate) fn init(self) -> Result<RepoEntry> {
         let mut opts = RepositoryInitOptions::new();
         opts.bare(self.deployment_kind.is_bare_alias());
@@ -798,7 +807,7 @@ impl RepoEntryBuilder {
     ///
     /// # Errors
     ///
-    /// - Return [`Error::Git2`] for failure to open repository entry.
+    /// Will fail if repository cannot be opened for whatever reason.
     pub(crate) fn open(self) -> Result<RepoEntry> {
         let repository = Repository::open(&self.path)?;
 
@@ -848,7 +857,7 @@ impl RepoEntryDeployer {
     ///
     /// # Errors
     ///
-    /// Will fail if sparse-check fails with exclusion rules, or deployment strategy itself fails
+    /// Will fail if sparse-checkout fails with exclusion rules, or deployment strategy itself fails
     /// for whatever reason.
     pub(crate) fn deploy_with(
         &self,
@@ -1047,7 +1056,7 @@ fn is_deployed(entry: &RepoEntry, excluded: &SparseCheckout, state: DeployState)
         list_file_paths(entry)?.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
     if state == DeployState::WithoutExcluded {
-        let result = glob_match(excluded.iter(), entries.iter());
+        let result  = glob_match(excluded.iter(), entries.iter());
         entries.retain(|x| !result.contains(x));
     }
 
