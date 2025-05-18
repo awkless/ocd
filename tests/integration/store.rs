@@ -38,7 +38,7 @@ fn root_new_open(_: &str, content: &str) -> Result<()> {
     run_script!(&txtar.comment())?;
 
     let root = Root::new_open()?;
-    assert!(root.is_deployed(DeployState::WithExcluded)?);
+    assert!(root.is_deployed(DeployState::WithoutExcluded)?);
 
     Ok(())
 }

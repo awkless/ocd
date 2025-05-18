@@ -15,7 +15,7 @@ use crate::{
     model::{config_dir, data_dir, Cluster, DeploymentKind, NodeEntry, RootEntry, WorkDirAlias},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use auth_git2::{GitAuthenticator, Prompter};
 use beau_collector::BeauCollector as _;
 use futures::{stream, StreamExt};
@@ -36,7 +36,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, instrument, warn, trace};
 
 /// Root entry in repository store.
 #[derive(Debug)]
@@ -55,7 +55,9 @@ impl Root {
     /// - Will fail if clone itself fails.
     /// - Will fail if root configuration file could not be extracted.
     /// - Will fail if deployment of root fails.
+    #[instrument(skip(url), level = "debug")]
     pub fn new_clone(url: impl AsRef<str>) -> Result<Self> {
+        trace!("Clone new root repository");
         let bar = ProgressBar::no_length();
         let entry = RepoEntry::builder("root")?
             .url(url.as_ref())
@@ -70,7 +72,9 @@ impl Root {
         let mut root = Self { entry, deployer };
         let config = root.extract_root_config()?;
 
+        std::fs::create_dir_all(config_dir()?)?;
         root.entry.set_deployment(DeploymentKind::BareAlias, config.settings.work_dir_alias);
+        root.deployer.add_excluded(config.settings.excluded.iter().flatten());
         root.deployer.deploy_with(BareAliasDeployment, &root.entry, DeployAction::Deploy)?;
 
         Ok(root)
@@ -91,6 +95,7 @@ impl Root {
         let config = root.extract_root_config()?;
 
         root.entry.set_deployment(DeploymentKind::BareAlias, config.settings.work_dir_alias);
+        root.deployer.add_excluded(config.settings.excluded.iter().flatten());
         root.deployer.deploy_with(RootDeployment, &root.entry, DeployAction::Deploy)?;
 
         Ok(root)
@@ -1310,8 +1315,8 @@ impl SparseCheckout {
             ExcludeAction::ExcludeAll => String::default(),
         };
 
-        let mut file = File::create(&self.sparse_path)?;
-        file.write_all(rules.as_bytes())?;
+        let mut file = File::create(&self.sparse_path).with_context(|| "Failed to create sparse checkout file")?;
+        file.write_all(rules.as_bytes()).with_context(|| "Failed to write sparsity rules")?;
 
         Ok(())
     }
