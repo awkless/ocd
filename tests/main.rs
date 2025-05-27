@@ -17,6 +17,8 @@ impl GitFixture {
     ///
     /// # Errors
     ///
+    /// - Will fail if repository cannot be initialized.
+    /// - WIll fail if configuration settings cannot be set.
     pub fn new(path: impl AsRef<Path>, kind: GitKind) -> Result<Self> {
         let mut opts = RepositoryInitOptions::new();
         opts.initial_head("main");
@@ -43,6 +45,7 @@ impl GitFixture {
     ///
     /// # Errors
     ///
+    /// Will fail if file data cannot be staged and committed.
     pub fn stage_and_commit(
         &self,
         filename: impl AsRef<Path>,

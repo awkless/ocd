@@ -29,14 +29,14 @@ use std::{
     collections::VecDeque,
     ffi::{OsStr, OsString},
     fmt::Write as FmtWrite,
-    fs::File,
+    fs::{remove_dir_all, File},
     io::Write as IoWrite,
     path::{Path, PathBuf},
     process::Command,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tracing::{debug, info, instrument, warn, trace};
+use tracing::{debug, info, instrument, trace, warn};
 
 /// Root entry in repository store.
 #[derive(Debug)]
@@ -61,7 +61,8 @@ impl Root {
         let bar = ProgressBar::no_length();
         let entry = RepoEntry::builder("root")?
             .url(url.as_ref())
-            .deployment(DeploymentKind::BareAlias, WorkDirAlias::new(config_dir()?))
+            .deployment_kind(DeploymentKind::BareAlias)
+            .work_dir_alias(WorkDirAlias::new(config_dir()?))
             .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
                 bar.clone(),
             )))
@@ -88,14 +89,13 @@ impl Root {
     ///
     /// - Will fail if root could not be opened.
     /// - Will fail if deployment check fails.
-    pub fn new_open() -> Result<Self> {
-        let entry = RepoEntry::builder("root")?.open()?;
-        let deployer = RepoEntryDeployer::new(&entry);
-        let mut root = Self { entry, deployer };
-        let config = root.extract_root_config()?;
+    pub fn new_open(entry: &RootEntry) -> Result<Self> {
+        let repo = RepoEntry::builder("root")?.open()?;
+        let deployer = RepoEntryDeployer::new(&repo);
+        let mut root = Self { entry: repo, deployer };
 
-        root.entry.set_deployment(DeploymentKind::BareAlias, config.settings.work_dir_alias);
-        root.deployer.add_excluded(config.settings.excluded.iter().flatten());
+        root.entry.set_deployment(DeploymentKind::BareAlias, entry.settings.work_dir_alias.clone());
+        root.deployer.add_excluded(entry.settings.excluded.iter().flatten());
         root.deployer.deploy_with(RootDeployment, &root.entry, DeployAction::Deploy)?;
 
         Ok(root)
@@ -106,11 +106,15 @@ impl Root {
     /// # Errors
     ///
     /// Will fail if root could be initialized for whatever reason.
-    pub fn new_init() -> Result<Self> {
+    #[instrument(skip(root), level = "debug")]
+    pub fn new_init(root: &RootEntry) -> Result<Self> {
+        info!("Initialize root repository");
         let entry = RepoEntry::builder("root")?
-            .deployment(DeploymentKind::BareAlias, WorkDirAlias::new(config_dir()?))
+            .deployment_kind(DeploymentKind::BareAlias)
+            .work_dir_alias(root.settings.work_dir_alias.clone())
             .init()?;
-        let deployer = RepoEntryDeployer::new(&entry);
+        let mut deployer = RepoEntryDeployer::new(&entry);
+        deployer.add_excluded(root.settings.excluded.iter().flatten());
 
         Ok(Self { entry, deployer })
     }
@@ -134,6 +138,21 @@ impl Root {
     /// reason.
     pub fn is_deployed(&self, state: DeployState) -> Result<bool> {
         is_deployed(&self.entry, &self.deployer.excluded, state)
+    }
+
+    /// Nuke root entry from repository store.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if root entry cannot be undeployed.
+    /// - Will fail if root repository cannot be removed from repository store.
+    #[instrument(skip(self), level = "debug")]
+    pub fn nuke(&self) -> Result<()> {
+        self.deployer.deploy_with(BareAliasDeployment, &self.entry, DeployAction::Undeploy)?;
+        remove_dir_all(self.path())?;
+        info!("Nuke {:?} from cluster", self.entry.name());
+
+        Ok(())
     }
 
     /// Current branch of root repository.
@@ -212,10 +231,8 @@ impl Node {
     pub fn new_init(name: impl AsRef<str>, node: &NodeEntry) -> Result<Self> {
         info!("Initialize node repository {:?}", name.as_ref());
         let entry = RepoEntry::builder(name.as_ref())?
-            .deployment(
-                node.settings.deployment.kind.clone(),
-                node.settings.deployment.work_dir_alias.clone(),
-            )
+            .deployment_kind(node.settings.deployment.kind.clone())
+            .work_dir_alias(node.settings.deployment.work_dir_alias.clone())
             .init()?;
         let mut deployer = RepoEntryDeployer::new(&entry);
         deployer.add_excluded(node.settings.excluded.iter().flatten());
@@ -235,19 +252,15 @@ impl Node {
         let entry = if data_dir()?.join(name.as_ref()).exists() {
             RepoEntry::builder(name.as_ref())?
                 .url(&node.settings.url)
-                .deployment(
-                    node.settings.deployment.kind.clone(),
-                    node.settings.deployment.work_dir_alias.clone(),
-                )
+                .deployment_kind(node.settings.deployment.kind.clone())
+                .work_dir_alias(node.settings.deployment.work_dir_alias.clone())
                 .open()?
         } else {
             let bar = ProgressBar::no_length();
             let entry = RepoEntry::builder(name.as_ref())?
                 .url(&node.settings.url)
-                .deployment(
-                    node.settings.deployment.kind.clone(),
-                    node.settings.deployment.work_dir_alias.clone(),
-                )
+                .deployment_kind(node.settings.deployment.kind.clone())
+                .work_dir_alias(node.settings.deployment.work_dir_alias.clone())
                 .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::SingleBar(
                     bar.clone(),
                 )))
@@ -262,9 +275,24 @@ impl Node {
         Ok(Self { entry, deployer })
     }
 
+    /// Nuke node entry from repository store.
+    ///
+    /// # Errors
+    ///
+    /// - Will fail if node entry cannot be undeployed.
+    /// - Will fail if node repository cannot be removed from repository store.
+    #[instrument(skip(self), level = "debug")]
+    pub fn nuke(&self) -> Result<()> {
+        self.deploy(DeployAction::Undeploy)?;
+        remove_dir_all(self.path())?;
+        info!("Nuke node {:?} from cluster", self.entry.name());
+
+        Ok(())
+    }
+
     /// Path to node repository.
     pub fn path(&self) -> &Path {
-        self.entry.repository.path()
+        self.entry.path()
     }
 
     /// Name of node repository.
@@ -348,10 +376,8 @@ impl MultiNodeClone {
         for (name, node) in &cluster.nodes {
             let repo = RepoEntryBuilder::new(name)?
                 .url(&node.settings.url)
-                .deployment(
-                    node.settings.deployment.kind.clone(),
-                    node.settings.deployment.work_dir_alias.clone(),
-                )
+                .deployment_kind(node.settings.deployment.kind.clone())
+                .work_dir_alias(node.settings.deployment.work_dir_alias.clone())
                 .authentication_prompter(ProgressBarAuthenticator::new(ProgressBarKind::MultiBar(
                     multi_bar.clone(),
                 )));
@@ -700,13 +726,14 @@ impl RepoEntryBuilder {
     }
 
     /// Set deployment settings for repository entry.
-    pub(crate) fn deployment(
-        mut self,
-        deployment_kind: DeploymentKind,
-        work_dir_alias: WorkDirAlias,
-    ) -> Self {
-        self.deployment_kind = deployment_kind;
-        self.work_dir_alias = work_dir_alias;
+    pub(crate) fn deployment_kind(mut self, kind: DeploymentKind) -> Self {
+        self.deployment_kind = kind;
+        self
+    }
+
+    /// Set path to function as working directory alias.
+    pub(crate) fn work_dir_alias(mut self, path: WorkDirAlias) -> Self {
+        self.work_dir_alias = path;
         self
     }
 
@@ -1061,7 +1088,7 @@ fn is_deployed(entry: &RepoEntry, excluded: &SparseCheckout, state: DeployState)
         list_file_paths(entry)?.into_iter().map(|p| p.to_string_lossy().into_owned()).collect();
 
     if state == DeployState::WithoutExcluded {
-        let result  = glob_match(excluded.iter(), entries.iter());
+        let result = glob_match(excluded.iter(), entries.iter());
         entries.retain(|x| !result.contains(x));
     }
 
@@ -1315,7 +1342,8 @@ impl SparseCheckout {
             ExcludeAction::ExcludeAll => String::default(),
         };
 
-        let mut file = File::create(&self.sparse_path).with_context(|| "Failed to create sparse checkout file")?;
+        let mut file = File::create(&self.sparse_path)
+            .with_context(|| "Failed to create sparse checkout file")?;
         file.write_all(rules.as_bytes()).with_context(|| "Failed to write sparsity rules")?;
 
         Ok(())

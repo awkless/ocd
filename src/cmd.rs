@@ -7,17 +7,21 @@
 //! the OCD binary. The entire OCD command set is implemented right there!.
 
 use crate::{
-    fs::{config_dir, data_dir, home_dir, load, save, Existence},
     glob_match,
-    model::{Cluster, DeploymentKind, DirAlias, HookKind, HookRunner, NodeEntry},
+    model::{
+        config_dir, data_dir, Cluster, HookAction, HookKind, HookRunner, NodeEntry, RootEntry,
+    },
     store::{DeployAction, MultiNodeClone, Node, Root, TablizeCluster},
-    Error, Result,
 };
 
-use clap::{Parser, Subcommand, ValueEnum};
+use anyhow::{anyhow, Context, Result};
+use clap::{Parser, Subcommand};
 use inquire::prompt_confirmation;
-use std::{ffi::OsString, fs::remove_dir_all, path::PathBuf};
-use tracing::{instrument, warn};
+use std::{
+    ffi::OsString,
+    fs::{remove_dir_all, remove_file},
+};
+use tracing::{info, instrument, warn};
 
 /// OCD public command set CLI.
 #[derive(Debug, Clone, Parser)]
@@ -57,20 +61,6 @@ impl Ocd {
             Command::Git(opts) => run_git(opts),
         }
     }
-}
-
-/// Behavior variants for hook execution.
-#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
-pub enum HookAction {
-    /// Always execute hooks no questions asked.
-    Always,
-
-    /// Prompt user with hook's contents, and execute it if and only if user accepts it.
-    #[default]
-    Prompt,
-
-    /// Never execute hooks no questions asked.
-    Never,
 }
 
 /// Full command-set of OCD.
@@ -118,25 +108,13 @@ pub struct CloneOptions {
     pub jobs: Option<usize>,
 }
 
-/// Initialize new repository.
+/// Initialize new entry in repository store, based on cluster configuration entry.
 #[derive(Parser, Clone, Debug)]
 #[command(author, about, long_about)]
 pub struct InitOptions {
     /// Name of new repository to initialize.
-    #[arg(group = "entry", value_name = "node_name")]
-    pub node_name: Option<String>,
-
-    /// Mark repository as root of cluster.
-    #[arg(groups = ["entry", "kind"], short, long)]
-    pub root: bool,
-
-    /// Mark directory as worktree-alias (makes node repositories bare-alias).
-    #[arg(group = "node", short, long, value_name = "dir_path")]
-    pub dir_alias: Option<PathBuf>,
-
-    /// Mark node repository as bare-alias, and default worktree-alias to $HOME.
-    #[arg(groups = ["node", "kind"], short = 'H', long)]
-    pub home_alias: bool,
+    #[arg(value_name = "entry_name")]
+    pub entry_name: String,
 }
 
 /// Deploy node of cluster.
@@ -191,61 +169,68 @@ pub struct ListOptions {
     pub names_only: bool,
 }
 
-async fn run_clone(run_hook: HookAction, opts: CloneOptions) -> Result<()> {
-    let _ = match Root::new_clone(&opts.url) {
-        Ok(root) => root,
-        Err(error) => {
-            // INVARIANT: Wipe out cluster if root cannot be cloned or deployed.
-            remove_dir_all(data_dir()?)?;
-            remove_dir_all(config_dir()?)?;
-            return Err(error);
+#[instrument(skip(opts), level = "debug")]
+async fn run_clone(action: HookAction, opts: CloneOptions) -> Result<()> {
+    // INVARIANT: Wipe out cluster if root cannot be cloned or deployed.
+    if let Err(error) = Root::new_clone(&opts.url) {
+        warn!("Root clone failure, clearing broken cluster");
+        let config_dir = config_dir()?;
+        if config_dir.exists() {
+            remove_dir_all(&config_dir)
+                .with_context(|| format!("Failed to remove {config_dir:?}"))?;
         }
-    };
 
-    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
-    hooks.set_action(run_hook);
+        let data_dir = data_dir()?;
+        if data_dir.exists() {
+            remove_dir_all(&data_dir).with_context(|| format!("Failed to remove {data_dir:?}"))?;
+        }
+
+        return Err(error);
+    }
+
+    let cluster = Cluster::new()?;
+    let mut hooks = HookRunner::new()?;
+    hooks.set_action(action);
+
     hooks.run("clone", HookKind::Pre, None)?;
-
-    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
     let multi_clone = MultiNodeClone::new(&cluster, opts.jobs)?;
     multi_clone.clone_all().await?;
-
     hooks.run("clone", HookKind::Post, None)?;
 
     Ok(())
 }
 
-pub fn run_init(run_hook: HookAction, opts: InitOptions) -> Result<()> {
-    let mut cluster: Cluster = load("cluster.toml", Existence::Required)?;
-
-    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
-    hooks.set_action(run_hook);
+pub fn run_init(action: HookAction, opts: InitOptions) -> Result<()> {
+    let mut hooks = HookRunner::new()?;
+    hooks.set_action(action);
     hooks.run("init", HookKind::Pre, None)?;
 
-    if opts.root {
-        let _ = Root::new_init()?;
-    } else {
-        // INVARIANT: Make sure root always exists.
-        if !data_dir()?.join("root").exists() {
-            let _ = Root::new_init()?;
+    match opts.entry_name.as_str() {
+        "root" => {
+            let path = config_dir()?.join(format!("{}.toml", opts.entry_name));
+            if !path.exists() {
+                return Err(anyhow!("No root entry to initialize! Define {path:?} first!"));
+            }
+
+            let data = std::fs::read_to_string(path)?;
+            let root: RootEntry = toml::de::from_str(&data)?;
+            let _ = Root::new_init(&root)?;
         }
+        &_ => {
+            let cluster = Cluster::new()?;
+            let _ = Root::new_open(&cluster.root)
+                .with_context(|| "Root may not have been properly initialized")?;
 
-        let deployment = if opts.home_alias {
-            DeploymentKind::BareAlias(DirAlias::new(home_dir()?))
-        } else if opts.dir_alias.is_some() {
-            DeploymentKind::BareAlias(DirAlias::new(opts.dir_alias.unwrap()))
-        } else {
-            DeploymentKind::Normal
-        };
+            let path = config_dir()?.join("nodes").join(format!("{}.toml", opts.entry_name));
+            if !path.exists() {
+                return Err(anyhow!("No node entry to initialize! Define {path:?} first!"));
+            }
 
-        let node = NodeEntry { deployment, ..Default::default() };
-        let name = opts.node_name.as_ref().ok_or(Error::NoNodeName)?;
-        let _ = Node::new_init(name, &node)?;
-
-        cluster.add_node(name, node)?;
+            let data = std::fs::read_to_string(path)?;
+            let node: NodeEntry = toml::de::from_str(&data)?;
+            let _ = Node::new_init(&opts.entry_name, &node)?;
+        }
     }
-
-    save("cluster.toml", cluster.to_string())?;
 
     hooks.run("init", HookKind::Post, None)?;
 
@@ -254,13 +239,12 @@ pub fn run_init(run_hook: HookAction, opts: InitOptions) -> Result<()> {
 
 #[instrument(skip(opts), level = "debug")]
 pub fn run_deploy(run_hook: HookAction, mut opts: DeployOptions) -> Result<()> {
-    let root = Root::new_open()?;
-    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
-
-    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
-    hooks.set_action(run_hook);
-
+    let cluster = Cluster::new()?;
+    let root = Root::new_open(&cluster.root)?;
     let action = if opts.with_excluded { DeployAction::DeployAll } else { DeployAction::Deploy };
+
+    let mut hooks = HookRunner::new()?;
+    hooks.set_action(run_hook);
 
     opts.patterns.dedup();
     for pattern in &mut opts.patterns {
@@ -278,7 +262,7 @@ pub fn run_deploy(run_hook: HookAction, mut opts: DeployOptions) -> Result<()> {
     let mut nodes = Vec::new();
     if opts.only {
         for target in &targets {
-            let entry = cluster.get_node(target)?;
+            let entry = cluster.nodes.get(target).ok_or(anyhow!("Node {target:?} not defined"))?;
             let node = Node::new_open(target, entry)?;
             nodes.push(node);
         }
@@ -301,14 +285,14 @@ pub fn run_deploy(run_hook: HookAction, mut opts: DeployOptions) -> Result<()> {
 }
 
 fn run_undeploy(run_hook: HookAction, mut opts: UndeployOptions) -> Result<()> {
-    let root = Root::new_open()?;
-    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
-
-    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
-    hooks.set_action(run_hook);
+    let cluster = Cluster::new()?;
+    let root = Root::new_open(&cluster.root)?;
 
     let action =
         if opts.excluded_only { DeployAction::UndeployExcludes } else { DeployAction::Undeploy };
+
+    let mut hooks = HookRunner::new()?;
+    hooks.set_action(run_hook);
 
     opts.patterns.dedup();
     for pattern in &mut opts.patterns {
@@ -326,7 +310,7 @@ fn run_undeploy(run_hook: HookAction, mut opts: UndeployOptions) -> Result<()> {
     let mut nodes = Vec::new();
     if opts.only {
         for target in &targets {
-            let entry = cluster.get_node(target)?;
+            let entry = cluster.nodes.get(target).ok_or(anyhow!("Node {target:?} not defined"))?;
             let node = Node::new_open(target, entry)?;
             nodes.push(node);
         }
@@ -350,9 +334,8 @@ fn run_undeploy(run_hook: HookAction, mut opts: UndeployOptions) -> Result<()> {
 
 #[instrument(skip(opts), level = "debug")]
 fn run_remove(run_hook: HookAction, mut opts: RemoveOptions) -> Result<()> {
-    let mut cluster: Cluster = load("cluster.toml", Existence::Required)?;
-
-    let mut hooks: HookRunner = load("hooks.toml", Existence::NotRequired)?;
+    let cluster = Cluster::new()?;
+    let mut hooks = HookRunner::new()?;
     hooks.set_action(run_hook);
 
     opts.patterns.dedup();
@@ -363,8 +346,7 @@ fn run_remove(run_hook: HookAction, mut opts: RemoveOptions) -> Result<()> {
     if let Some(index) = opts.patterns.iter().position(|x| *x == "root") {
         warn!("Removing root will nuke your entire cluster");
         if prompt_confirmation("Do you want to send your cluster to the gallows? [y/n]")? {
-            let root = Root::new_open()?;
-            root.nuke()?;
+            nuke_cluster(&cluster)?;
             return Ok(());
         } else {
             opts.patterns.swap_remove(index);
@@ -375,22 +357,44 @@ fn run_remove(run_hook: HookAction, mut opts: RemoveOptions) -> Result<()> {
     hooks.run("rm", HookKind::Pre, Some(&targets))?;
 
     for target in &targets {
-        let node = cluster.remove_node(target)?;
-        let repo = Node::new_open(target, &node)?;
+        let node = cluster.nodes.get(target).ok_or(anyhow!("Node {target:?} not defined"))?;
+        let repo = Node::new_open(target, node)?;
         repo.deploy(DeployAction::Undeploy)?;
+        remove_file(config_dir()?.join("nodes").join(format!("{target}.toml")))?;
         remove_dir_all(repo.path())?;
     }
-
-    save("cluster.toml", cluster.to_string())?;
 
     hooks.run("rm", HookKind::Post, Some(&targets))?;
 
     Ok(())
 }
 
+fn nuke_cluster(cluster: &Cluster) -> Result<()> {
+    let root = Root::new_open(&cluster.root)?;
+    root.nuke()?;
+
+    for (name, node) in &cluster.nodes {
+        if !data_dir()?.join(name).exists() {
+            warn!("Node {name:?} not found in repository store");
+            continue;
+        }
+
+        let repo = Node::new_open(name, node)?;
+        repo.nuke()?;
+    }
+
+    remove_dir_all(config_dir()?)?;
+    info!("Configuration directory removed");
+
+    remove_dir_all(data_dir()?)?;
+    info!("Data directory removed");
+
+    Ok(())
+}
+
 fn run_list(opts: ListOptions) -> Result<()> {
-    let root = Root::new_open()?;
-    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
+    let cluster = Cluster::new()?;
+    let root = Root::new_open(&cluster.root)?;
 
     let tablize = TablizeCluster::new(&root, &cluster);
     if opts.names_only {
@@ -403,7 +407,7 @@ fn run_list(opts: ListOptions) -> Result<()> {
 }
 
 fn run_git(opts: Vec<OsString>) -> Result<()> {
-    let cluster: Cluster = load("cluster.toml", Existence::Required)?;
+    let cluster = Cluster::new()?;
     let mut patterns = opts[0].to_string_lossy().into_owned();
     patterns.retain(|c| !c.is_whitespace());
     let mut patterns: Vec<&str> = patterns.split(',').collect();
@@ -411,13 +415,13 @@ fn run_git(opts: Vec<OsString>) -> Result<()> {
 
     if let Some(index) = patterns.iter().position(|x| *x == "root") {
         patterns.swap_remove(index);
-        let root = Root::new_open()?;
+        let root = Root::new_open(&cluster.root)?;
         root.gitcall(opts[1..].to_vec())?;
     }
 
     let targets = glob_match(patterns, cluster.nodes.keys());
     for target in &targets {
-        let node = cluster.get_node(target)?;
+        let node = cluster.nodes.get(target).ok_or(anyhow!("{target} not found"))?;
         let node = Node::new_open(target, node)?;
         node.gitcall(opts[1..].to_vec())?;
     }

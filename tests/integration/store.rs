@@ -10,11 +10,13 @@ use run_script::run_script;
 use sealed_test::prelude::*;
 use simple_test_case::dir_cases;
 use simple_txtar::Archive;
+use std::fs::write;
 
 #[sealed_test(env = [("XDG_DATA_HOME", ".local/share/ocd")])]
 fn root_new_init() -> Result<()> {
     std::env::set_var("HOME", std::env::current_dir()?);
-    let root = Root::new_init()?;
+    let entry = RootEntry::try_default()?;
+    let root = Root::new_init(&entry)?;
     assert!(root.path().exists());
 
     Ok(())
@@ -33,11 +35,17 @@ fn root_new_open(_: &str, content: &str) -> Result<()> {
     let txtar = Archive::from(content);
     let git = GitFixture::new(".local/share/ocd/root", GitKind::Bare)?;
     for file in txtar.iter() {
+        if file.name == ".config/ocd/root.toml" {
+            write(pwd.join(&file.name), file.content.as_bytes())?;
+        } else {
+            write(pwd.join(".config/ocd").join(&file.name), file.content.as_bytes())?;
+        }
         git.stage_and_commit(&file.name, &file.content)?;
     }
     run_script!(&txtar.comment())?;
 
-    let root = Root::new_open()?;
+    let cluster = Cluster::new()?;
+    let root = Root::new_open(&cluster.root)?;
     assert!(root.is_deployed(DeployState::WithoutExcluded)?);
 
     Ok(())
@@ -79,11 +87,13 @@ fn root_deploy_action(_: &str, content: &str) -> Result<()> {
     let txtar = Archive::from(content);
     let git = GitFixture::new(".local/share/ocd/root", GitKind::Bare)?;
     for file in txtar.iter() {
+        write(pwd.join(".config/ocd").join(&file.name), file.content.as_bytes())?;
         git.stage_and_commit(&file.name, &file.content)?;
     }
     run_script!(&txtar.comment())?;
 
-    let root = Root::new_open()?;
+    let cluster = Cluster::new()?;
+    let root = Root::new_open(&cluster.root)?;
     root.deploy(DeployAction::Deploy)?;
     assert!(root.is_deployed(DeployState::WithoutExcluded)?);
 
@@ -103,11 +113,13 @@ fn root_undeploy_action(_: &str, content: &str) -> Result<()> {
     let txtar = Archive::from(content);
     let git = GitFixture::new(".local/share/ocd/root", GitKind::Bare)?;
     for file in txtar.iter() {
+        write(pwd.join(".config/ocd").join(&file.name), file.content.as_bytes())?;
         git.stage_and_commit(&file.name, &file.content)?;
     }
     run_script!(&txtar.comment())?;
 
-    let root = Root::new_open()?;
+    let cluster = Cluster::new()?;
+    let root = Root::new_open(&cluster.root)?;
     root.deploy(DeployAction::Undeploy)?;
     assert!(root.is_deployed(DeployState::WithoutExcluded)?);
 
@@ -127,11 +139,13 @@ fn root_deploy_all_action(_: &str, content: &str) -> Result<()> {
     let txtar = Archive::from(content);
     let git = GitFixture::new(".local/share/ocd/root", GitKind::Bare)?;
     for file in txtar.iter() {
+        write(pwd.join(".config/ocd").join(&file.name), file.content.as_bytes())?;
         git.stage_and_commit(&file.name, &file.content)?;
     }
     run_script!(&txtar.comment())?;
 
-    let root = Root::new_open()?;
+    let cluster = Cluster::new()?;
+    let root = Root::new_open(&cluster.root)?;
     root.deploy(DeployAction::DeployAll)?;
     assert!(root.is_deployed(DeployState::WithExcluded)?);
 
@@ -151,11 +165,13 @@ fn root_undeploy_excluded_action(_: &str, content: &str) -> Result<()> {
     let txtar = Archive::from(content);
     let git = GitFixture::new(".local/share/ocd/root", GitKind::Bare)?;
     for file in txtar.iter() {
+        write(pwd.join(".config/ocd").join(&file.name), file.content.as_bytes())?;
         git.stage_and_commit(&file.name, &file.content)?;
     }
     run_script!(&txtar.comment())?;
 
-    let root = Root::new_open()?;
+    let cluster = Cluster::new()?;
+    let root = Root::new_open(&cluster.root)?;
     root.deploy(DeployAction::UndeployExcludes)?;
     assert!(root.is_deployed(DeployState::WithoutExcluded)?);
 

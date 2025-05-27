@@ -48,7 +48,7 @@
 )]
 #![doc(issue_tracker_base_url = "https://github.com/awkless/ocd/issues")]
 
-//pub(crate) mod cmd;
+pub mod cmd;
 pub mod model;
 pub mod store;
 
