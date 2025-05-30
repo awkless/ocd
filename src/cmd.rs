@@ -27,9 +27,9 @@ use tracing::{info, instrument, warn};
 #[derive(Debug, Clone, Parser)]
 #[command(
     about,
-    override_usage = "\n  ocd [options] <ocd-command>\n  ocd [options] [pattern]... <git-command>",
+    override_usage = "\n  ocd [options] <ocd-command>\n  ocd [options] [target]... <git-command>",
     subcommand_help_heading = "Commands",
-    version
+    version,
 )]
 pub struct Ocd {
     #[arg(default_value_t = HookAction::default(), long, short, value_enum, value_name = "action")]
@@ -66,24 +66,24 @@ impl Ocd {
 /// Full command-set of OCD.
 #[derive(Debug, Clone, Subcommand)]
 pub enum Command {
-    /// Clone existing cluster.
+    /// Clone existing cluster from root repository.
     #[command(override_usage = "ocd clone [options] <url>")]
     Clone(CloneOptions),
 
-    /// Initialize new repository.
+    /// Initialize new entries.
     #[command(override_usage = "ocd init [options] <node_name>")]
     Init(InitOptions),
 
-    /// Deploy node of cluster.
-    #[command(override_usage = "ocd deploy [options] [pattern]...")]
+    /// Deploy target entries in cluster.
+    #[command(override_usage = "ocd deploy [options] [target]...")]
     Deploy(DeployOptions),
 
-    /// Undeploy nodes of cluster.
-    #[command(override_usage = "ocd undeploy [options] [pattern]...")]
+    /// Undeploy target entries in cluster.
+    #[command(override_usage = "ocd undeploy [options] [target]...")]
     Undeploy(UndeployOptions),
 
-    /// Remove target node from cluster.
-    #[command(name = "rm", override_usage = "ocd rm [options] [pattern]...")]
+    /// Remove target entries from cluster.
+    #[command(name = "rm", override_usage = "ocd rm [options] [target]...")]
     Remove(RemoveOptions),
 
     /// List current entries in cluster.

@@ -703,7 +703,7 @@ pub enum HookAction {
     /// Always execute hooks no questions asked.
     Always,
 
-    /// Prompt user with hook's contents, and execute it if and only if user accepts it.
+    /// Prompt user with hook's contents through pager.
     #[default]
     Prompt,
 
