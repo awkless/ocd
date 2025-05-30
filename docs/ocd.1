@@ -1,0 +1,445 @@
+.TH OCD "1" "May 2025" "ocd 0.8.0" "User Commands"
+.SH NAME
+ocd \- organize current dotfiles
+.SH SYNOPSIS
+ocd [options] <ocd-command>
+.br
+ocd [options] [target]... <git-command>
+.SH DESCRIPTION
+OCD is an experimental dotfile management tool that allows the user to manage
+their dotfiles through a collection of deployable repositories called a
+\fBcluster\fR. Upon deployment, the user can issue Git commands interactively
+to manage their dotfiles within a given repository apart of their cluster.
+.sp
+See the FILES section about properly configuring OCD to get a basic cluster
+definition going. See the OCD COMMANDS section to learn about the command-set
+this tool offers. Finally, see the EXAMPLES section to get a rough idea on how
+the tool functions.
+.SH OPTIONS
+.PP
+\-r, \-\-run-hook <action>
+.RS 4
+Determine how to treat command hooks.
+.sp
+[default: prompt]
+.br
+Possible values:
+.br
+\- always: Always execute hooks no question asked.
+.br
+\- prompt: Prompt user with hook's contents through \fBminus\fR paper.
+.br
+\- never: Never execute hooks no questions asked.
+.RE
+.PP
+\-V, \-\-version
+.RS 4
+Prints the currently installed version of OCD.
+.RE
+.PP
+\-h, \-\-help
+.RS 4
+Prints the synopsis and lists out all commands and options that OCD offers.
+.RE
+.SH OCD COMMANDS
+.PP
+\fBocd-init\fR(1)
+.RS 4
+Initialize entry of cluster.
+.RE
+.PP
+\fBocd-clone\fR(1)
+.RS 4
+Clone existing cluster from root repository.
+.RE
+.PP
+\fBocd-deploy\fR(1)
+.RS 4
+Deploy target repositories in cluster.
+.RE
+.PP
+\fBocd-undeploy\fR(1)
+.RS 4
+Undeploy target repositories in cluster.
+.RE
+.PP
+\fBocd-rm\fR(1)
+.RS 4
+Remove target repositories from cluster.
+.RE
+.PP
+\fBocd-ls\fR(1)
+.RS 4
+List current repository entries in cluster.
+.RE
+.PP
+\fBhelp\fR [<ocd-command>]
+.RS 4
+Print help message for OCD command-set. Alternative to help flag.
+.RE
+.SH FILES
+.SS The Concept of a Cluster
+OCD operates on the concept of a \fBcluster\fR. A cluster is a collection of
+repositories that can be deployed together.  The cluster is made up of the
+\fBcluster definition\fR and the \fBrepository store\fR.  The cluster definition
+houses the configuration files that defines each entry of the repository store.
+The repository store houses the Git repositories defined as entries of the
+cluster.  The cluster definition is always expected to be at
+\fB$XDG_CONFIG_HOME/ocd\fR, and the repository store is expected to be at
+\fB$XDG_DATA_HOME/ocd\fR.
+.sp
+A given cluster entry must be written in the TOML data exchange format version
+1.0.  The user is responsible for defining any cluster entry they want OCD to
+manage. A cluster entry can either be a \fBnode\fR or a \fBroot\fR.
+.SS "Node Entry Layout"
+A node entry is a basic repository entry apart of the cluster.  It must be
+defined in the \fBnodes\fR directory at the top-level of the cluster definition,
+and must be named after the node it defines in the repository store.  For
+example, \fB$XDG_CONFIG_HOME/ocd/nodes/vim.toml\fR corresponds to
+\fB$XDG_DATA_HOME/ocd/vim\fR in the repository store. Any node entry defined
+outside of the \fBnodes\fR directory will be silently ignored. A node entry must
+contain the following two key-value pairs in the \fBsettings\fR table: a
+\fBdeployment\fR, and a \fBurl\fR key-value pair.
+.sp
+The deployment key-value pair specifies the deployment method of the node. There
+is \fBnormal\fR and \fBbare-alias\fR deployment. Normal deployment simply means
+that OCD will make sure that the node has been cloned as a normal repository.
+Bare-alias deployment means that OCD will clone the node as a bare repository,
+and will use an external directory as an alias for a worktree. Thus, OCD can
+deploy the contents of the node to that working directory alias. This gives the
+user the ability treat a target directory as a Git repository, without
+intializing it as one. The deployment key-value pair can be defined to accept
+a string value, or an inline-table value. Here is the expected layouts:
+.sp
+.in +.5i
+\fBNormal deployment layout:\fR
+.br
+[settings]
+.br
+deployment = "normal"
+.sp
+\fBBare-alias deployment layout (default to $HOME):\fR
+.br
+[settings]
+.br
+deployment = "bare_alias"
+.sp
+\fBBare-alias deployment custom work directory target:\fR
+.br
+[settings]
+.br
+deployment = { kind = "bare_alias", work_dir_alias = "~/documents" }
+.in
+.sp
+The third layout option shown above should generally be used for bare-alias
+deployment only. OCD will perform shell expansion to obtain a full valid path
+for the working directory alias. It can be used for normal deployment like so:
+.sp
+.in
+[settings]
+.br
+deployment = { kind = "normal", work_dir_alias = "~/documents" }
+.in
+.sp
+but OCD will silently ignore the \fBwork_dir_alias\fR key-value pair. This is
+because normal repositories cannot use working directory aliases. By definition
+a normal repository already has a working directory, which is the same path as
+its Git directory. Thus, normal repositories cannot be deployed, but can be
+cloned. OCD will warn about this if the user attempts to deploy a node entry
+defined to use normal deployment.
+.sp
+The url key-value pair simply specifies where to clone the node entry from. It
+can accept any string value that represents a valid URL that Git can interpret.
+Thus, here is an example of a minimal node entry configuration:
+.sp
+.in +.5i
+[settings]
+.br
+deployment = "bare_alias"
+.br
+url = "https://github.com/user/vim.git"
+.in
+.sp
+Optionally, a node entry can contain a list of files to exclude from deployment
+through the \fBexcluded\fR key-value pair, or a list of other nodes to use as
+dependencies via the \fBdependencies\fR key-value pair. The excluded key-value
+pair accepts a list of strings representing valid gitignore-style patterns.  The
+dependencies key-value pair accepts a list of strings containing the names of
+the nodes to deploy. A given dependency must already be defined as an entry in
+the cluster definition, and must be acylic. OCD checks for these qualities each
+time it is called. Here is an example of a fully decked out node entry:
+.sp
+.in +.5i
+[settings]
+.br
+deployment = { kind = "bare_alias", work_dir_alias = "$HOME/foobar" }
+.br
+url = "https://github.com/user/foobar.git"
+.br
+excluded = ["README*", "LICENSE*", ".github/"]
+.br
+dependencies = ["foo", "bar", "baz"]
+.in
+.SS Root Entry Layout
+The root is a specialized bare-alias entry of a cluster. This special entry
+contains the cluster definition itself for deployment to new machines. There
+can only be one root, and it must be defined at
+\fB$XDG_CONFIG_HOME/ocd/root.toml\fR at all times. OCD will error out if root
+is not defined.
+.sp
+The root entry configuration file must contain a \fBsettings\fR table similar to
+a node entry configuration file. The \fBwork_dir_alias\fR key-value pair must
+be defined. This key-value pair can accept only two string values:
+\fBconfig_dir\fR, or \fBhome_dir\fR. The config_dir option will make OCD deploy
+the root repository to \fB$XDG_CONFIG_HOME/ocd\fR, while the home_dir option
+will make OCD deploy root directly to the user's home directory. These are the
+only two locations that OCD accepts. Optionally, the user can specify a list of
+files to exclude from deployment, the same as the \fBexcluded\fR key-value pair
+for node entries. Here is an example configuration for root:
+.sp
+.in +.5i
+[settings]
+.br
+work_dir_alias = "config_dir"
+.br
+excluded = ["README*", "LICENSE*", ".github/"]
+.in
+.SS Command Hooks
+The user can define custom command hooks to execute. Command hooks utilize two
+components: an entry in the command hook configuration file, and a hook script
+to execute with. A command hook entry must be defined in
+\fB$XDG_CONFIG_HOME/ocd/hooks.toml\fR. Hook scripts must be placed into the
+\fB$XDG_CONFIG_HOME/ocd/hooks\fR directory. These hook scripts do not need to
+be executable, because OCD extracts their contents into a sub-shell for
+execution.
+.sp
+A command hook entry can define a hook script to execute before (pre) or after
+(post) a given command. Some commands may even allow a command hook to only
+execute for a target repository. Each entry must be defined under the
+\fBhooks\fR table. Here is the basic layout:
+.sp
+.in +.5i
+[hooks]
+.br
+<ocd-command> = [
+.br
+.in +.8i
+{ pre = "hook.sh", work_dir = "$HOME" },
+.br
+{ post = "hook.sh" },
+.br
+{ pre = "hook.sh", post = "hook.sh", work_dir = "$HOME", target = "vim" },
+.in
+.br
+]
+.in -.5i
+.sp
+The \fB<ocd-command>\fR field represents the name of a valid OCD command to tie
+each hook entry to. Each key-value pair for the hook entries shown above are
+all optional. Thus, while not recommended, an empty hook entry is considered
+valid. The \fBwork_dir\fR key-value pair is always shell expanded. If it is not
+defined, then OCD will use the current working directory instead. When selecting
+a hook script for either of the \fBpre\fR or \fBpost\fR key-value pairs, the
+name of the hook script should be used. Do not use absolute paths, or shell
+variables to construct a valid path to the hook script. All hook scripts are
+stored in \fB$XDG_CONFIG_HOME/ocd/hooks\fR, and OCD will only check this
+directory for hook scripts. Any path you provide will always be relative to this
+directory. Finally, the \fBtarget\fR key-value pair can be used to tie a given
+hook entry to a target entry in the cluster.
+.sp
+Finally, all OCD commands have access to command hooks. The only exceptions are
+the Git command shortcut that allows the user to issue Git commands on target
+entries of their cluster, and the help command. The Git command shortcut
+exception is done to avoid overriding any hooks the user might have for Git
+itself. However, the special targeting feature offered by the \fBtarget\fR
+key-value pair is not supported by all OCD commands. As a general rule of thumb,
+any OCD command that does not allow the user to target specific entries in their
+cluster will not support the command hook targeting feature.
+.SH EXAMPLES
+.SS Build New Modular Cluster
+Assume that the following root configuration file was defined beforehand:
+.sp
+.RS 4
+\fB$XDG_CONFIG_HOME/ocd/root.toml:\fR
+.br
+[settings]
+.br
+work_dir_alias = "config_dir"
+.br
+excluded = ["README*", "LICENSE*"]
+.RE
+.sp
+Now initialize the root repository:
+.sp
+.RS 4
+ocd init root
+.RE
+.sp
+Configure remote refs for root repository to point to
+"git@github.com:user/root.git", and check-in root configuration file:
+.sp
+.RS 4
+cd ~/.config/ocd
+.br
+ocd root remote add origin git@github.com:user/root.git
+.br
+ocd root add root.toml
+.br
+ocd root commit -m "Initial commit"
+.br
+ocd root push -u origin main
+.RE
+.sp
+Now that root is setup, lets add a new node entry. Assume that Vim has already
+been configured at \fB$HOME/.vimrc\fR. Lets define the following node entry
+for it:
+.sp
+.RS 4
+\fB$XDG_CONFIG_HOME/ocd/nodes/vim.toml:\fR
+.br
+[settings]
+.br
+deployment = "bare_alias"
+.br
+url = "git@github.com:user/vim.git"
+.RE
+.sp
+Now we initialize, and check-in the configuration file to the new vim node:
+.sp
+.RS 4
+ocd init vim
+.br
+cd ~
+.br
+ocd vim remote add origin git@github.com:user/vim.git
+.br
+ocd vim add .vimrc
+.br
+ocd vim commit -m "Initial commit"
+.br
+ocd vim push -u origin main
+.RE
+.sp
+Now lets assume we have a Bash configuration through \fB.bashrc\fR and
+\fB.bash_profile\fR. However, the PS1 of this configuration relies on a special
+shell script named \fBpolyglot.sh\fR stored at
+https://github.com/agkozak/polyglot.git. To ensure our Bash configuration is
+functional, we need to create two node entries such that one will act as the
+dependency of the other:
+.sp
+.RS 4
+\fB$XDG_CONFIG_HOME/ocd/nodes/polyglot_ps1.toml:\fR
+.br
+[settings]
+.br
+deployment = { kind = "bare_alias", work_dir_alias = "$HOME/.local/share" }
+.br
+url = "https://github.com/agkozak/polyglot.git"
+.br
+excluded = [".git*", "img/", "vimrc.local", "README*", "LICENSE*", "*.zsh"]
+.sp
+\fB$XDG_CONFIG_HOME/ocd/nodes/bash.toml:\fR
+.br
+[settings]
+.br
+deployment = "bare_alias"
+.br
+url = "git@github.com:user/bash.git"
+.br
+dependencies = ["polyglot_ps1"]
+.RE
+.sp
+Finally, we initialize, commit, and deploy the bash node:
+.sp
+.RS 4
+ocd init bash
+.br
+ocd bash remote add origin git@github.com:user/bash.git
+.br
+ocd bash add .bashrc .bash_profile
+.br
+ocd bash commit -m "Initial commit"
+.br
+ocd bash push -u origin main
+.br
+ocd deploy bash
+.RE
+.sp
+We do not need to initialize the polyglot_ps1 node, because OCD will
+automatically clone and deploy it. This works, because we stated that the
+polyglot_ps1 node is a dependency of the bash node. The polyglot_ps1 node will
+also ensure that only the \fBpolyglot.sh\fR script is deployed to
+$HOME/.local/share since all other files will be excluded from deployment.
+.sp
+Finally, we want to transfer this new cluster we created to a new machine.
+Firstly, make sure that all node entry configurations have been committed to
+root:
+.sp
+.RS 4
+cd ~/.config/ocd
+.br
+ocd root add nodes/*
+.br
+ocd root commit -m "Update node entries in cluster"
+.br
+ocd push origin main
+.RE
+.sp
+Now head over to the target machine, and use the clone command like so:
+.sp
+.RS 4
+ocd clone git@github.com:user/root.git
+.RE
+.sp
+OCD will clone and deploy the root repository, and clone all node entries in one
+shot. You can than use \fBocd deploy "*"\fR to deploy all nodes that were
+cloned.
+.SS Build New Monolithic Cluster
+Sometimes the user may want to keep track of a small set of dotfiles that they
+just want to dump into a single place for convienence. Or they just want to have
+a minimal deployable dotfile configuration for a server environment. Whatever
+the reason, OCD allows for the root repository to be used as the main area to
+house dotfiles besides housing the cluster definition.
+.sp
+Firstly, we need to define a root configuration that uses our home directory
+as the working directory alias:
+.sp
+.RS 4
+\fB$XDG_CONFIG_HOME/ocd/root.toml:\fR
+.br
+[settings]
+.br
+work_dir_alias = "home_dir"
+.RE
+.sp
+Now initialize root, and we can begin dumping dotfile configurations relative
+to our home directory:
+.sp
+.RS 4
+ocd init root
+.br
+cd ~/.config/ocd
+.br
+ocd root remote add origin git@github.com:user/root.git
+.br
+ocd root add .config/ocd/* .vimrc .bash_profile .bashrc
+.br
+ocd root commit -m "Initial commit"
+.br
+ocd push -u origin main
+.RE
+.sp
+Finally, we can use the clone command the same way we would for a modular
+cluster in order to transfer this cluster to a new machine. We can add node
+entries to this cluster if we wanted to, but we just need to keep in mind that
+root's working directory alias is now pointing to our home directory instead of
+OCD's configuration directory.
+.SH AUTHOR
+Jason Pena <jasonpena@awkless.com>
+.SH COPYRIGHT
+Copyright (C) 2025 Jason Pena <jasonpena@awkless.com>
+.SH "SEE ALSO"
+See the Arch Linux Wiki page at
+<https://wiki.archlinux.org/title/Dotfiles#Tracking_dotfiles_directly_with_Git>
+for a hands on example of manually creating a bare-alias repository to better
+understand the concept.
