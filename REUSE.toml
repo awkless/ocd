@@ -8,3 +8,17 @@ path = ["Cargo.lock"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2025 Jason Pena <jasonpena@awkless.com>"
 SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = [
+  "docs/ocd.1",
+  "docs/ocd-ls.1",
+  "docs/ocd-clone.1",
+  "docs/ocd-init.1",
+  "docs/ocd-deploy.1",
+  "docs/ocd-undeploy.1",
+  "docs/ocd-rm.1",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2025 Jason Pena <jasonpena@awkless.com>"
+SPDX-License-Identifier = "MIT"
