@@ -368,7 +368,7 @@ impl MultiNodeClone {
     ///
     /// # Errors
     ///
-    ///- Will fail if [`RepoEntryBuilder`] could not be constructed for a given node entry.
+    /// - Will fail if repository entry could not be constructed for a given node entry.
     pub fn new(cluster: &Cluster, jobs: Option<usize>) -> Result<Self> {
         let multi_bar = MultiProgress::new();
         let mut nodes: Vec<RepoEntryBuilder> = Vec::new();
@@ -1353,7 +1353,7 @@ impl SparseCheckout {
     ///
     /// Each pattern can be feed into [`glob_match`] if need be.
     ///
-    /// [`glob_match`]: crate::utils::glob_match
+    /// [`glob_match`]: crate::glob_match
     pub(crate) fn iter(&self) -> SparsityRuleIter<'_> {
         SparsityRuleIter { exclusion_rules: &self.exclusion_rules, index: 0 }
     }
