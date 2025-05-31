@@ -1,0 +1,50 @@
+.TH OCD-RM "1" "May 2025" "ocd 0.8.0" "User Commands"
+.SH NAME
+ocd-rm \- remove target entries from cluster
+.SH SYNOPSIS
+ocd clone [options] [target]...
+.SH DESCRIPTION
+Remove target entries from the cluster. The target entry's configuration file
+and repository will be removed from the cluster definition, and the repository
+store. If the entry was deployed, then it will be undeployed before removal.
+.sp
+If root is targeted, then the user will be prompted about its removal. If the
+user accepts, then this command will proceed with undeploying all entries, and
+delete the entire cluster by nuking the cluster definition, repository store
+in one shot.
+.SH OPTIONS
+.PP
+\-h, \-\-help
+.RS 4
+Print help message for this command.
+.RE
+.sp
+.PP
+[target]...
+.RS 4
+List of comma separated cluster entry names to remove.
+.sp
+User can use glob matching patterns to select targets. See
+<https://docs.rs/glob/latest/glob/struct.Pattern.html> for listing of accepted
+patterns. Be sure to quote targets to avoid the shell from expanding them.
+.RE
+.SH EXAMPLES
+Assume that root, bash, and polyglot_ps1 have been defined as entries of
+the cluster such that polyglot_ps1 is a dependency of bash. Lets remove bash:
+.sp
+.RS 4
+ocd rm bash
+.RE
+.sp
+This will only remove bash despite having polyglot_ps1 as a dependency. The
+user must specify the names of each entry they want to remove. Dependencies
+are ignored always.
+.sp
+The following will nuke the entire cluster from the filesystem if the user
+accepts:
+.sp
+.RS 4
+ocd rm root
+.RE
+.SH OCD
+Part of the \fBocd\fR(1) command-set.
