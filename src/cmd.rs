@@ -57,7 +57,7 @@ impl Ocd {
             Command::Deploy(opts) => run_deploy(self.run_hook, opts),
             Command::Undeploy(opts) => run_undeploy(self.run_hook, opts),
             Command::Remove(opts) => run_remove(self.run_hook, opts),
-            Command::List(opts) => run_list(opts),
+            Command::List(opts) => run_list(self.run_hook, opts),
             Command::Git(opts) => run_git(opts),
         }
     }
@@ -203,7 +203,8 @@ async fn run_clone(action: HookAction, opts: CloneOptions) -> Result<()> {
 pub fn run_init(action: HookAction, opts: InitOptions) -> Result<()> {
     let mut hooks = HookRunner::new()?;
     hooks.set_action(action);
-    hooks.run("init", HookKind::Pre, None)?;
+
+    hooks.run("init", HookKind::Pre, Some(&vec![opts.entry_name.clone()]))?;
 
     match opts.entry_name.as_str() {
         "root" => {
@@ -232,7 +233,7 @@ pub fn run_init(action: HookAction, opts: InitOptions) -> Result<()> {
         }
     }
 
-    hooks.run("init", HookKind::Post, None)?;
+    hooks.run("init", HookKind::Post, Some(&vec![opts.entry_name.clone()]))?;
 
     Ok(())
 }
@@ -392,9 +393,14 @@ fn nuke_cluster(cluster: &Cluster) -> Result<()> {
     Ok(())
 }
 
-fn run_list(opts: ListOptions) -> Result<()> {
+fn run_list(run_hook: HookAction, opts: ListOptions) -> Result<()> {
     let cluster = Cluster::new()?;
     let root = Root::new_open(&cluster.root)?;
+
+    let mut hooks = HookRunner::new()?;
+    hooks.set_action(run_hook);
+
+    hooks.run("ls", HookKind::Pre, None)?;
 
     let tablize = TablizeCluster::new(&root, &cluster);
     if opts.names_only {
@@ -402,6 +408,8 @@ fn run_list(opts: ListOptions) -> Result<()> {
     } else {
         tablize.fancy()?;
     }
+
+    hooks.run("ls", HookKind::Post, None)?;
 
     Ok(())
 }
