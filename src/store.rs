@@ -1057,7 +1057,7 @@ impl Deployment for BareAliasDeployment {
                 format!("Undeploy {:?}", entry.name)
             }
             DeployAction::UndeployExcludes => {
-                if is_deployed(entry, excluded, DeployState::WithExcluded)? {
+                if !is_deployed(entry, excluded, DeployState::WithExcluded)? {
                     warn!("Repository {:?} excluded files are already undeployed", entry.name);
                     return Ok(());
                 }

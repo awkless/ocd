@@ -339,6 +339,7 @@ fn node_undeploy_excluded_action(_: &str, content: &str) -> Result<()> {
         .build();
     let node = Node::new_open("node", &entry)?;
 
+    node.deploy(DeployAction::DeployAll)?;
     node.deploy(DeployAction::UndeployExcludes)?;
     assert!(node.is_deployed(DeployState::WithoutExcluded)?);
 
