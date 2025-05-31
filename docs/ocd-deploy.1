@@ -1,0 +1,71 @@
+.TH OCD "1" "May 2025" "ocd 0.8.0" "User Commands"
+.SH NAME
+ocd-deploy - deploy target entries in cluster
+.SH SYNOPSIS
+ocd deploy [options] [target]...
+.SH DESCRIPTION
+Deploy selected cluster entries to their working directory targets. Any
+dependencies will also be deployed by default. Defined node entries that do
+not exist in the repository store will automatically be cloned through their
+\fBurl\fR target.
+.sp
+Deployment of normal entries, i.e., not bare-alias, will cause this command to
+only check if they have been cloned into the repository store, and skip them.
+Normal entries cannot be deployed, because they do not have alias working trees
+to deploy in the first place.
+.sp
+Finally, the deployment of root will also be skipped, because root is always
+deployed no matter what.
+.SH OPTIONS
+.PP
+\-o, \-\-only
+.RS 4
+Do not deploy dependencies of targets.
+.RE
+.sp
+.PP
+\-w, \-\-with-excluded
+.RS 4
+Include excluded files during deployment of targets.
+.RE
+.sp
+.PP
+\-h, \-\-help
+.RS 4
+Print help message for this command.
+.RE
+.sp
+.PP
+[target]...
+.RS 4
+List of comma separated cluster entry names to deploy.
+.sp
+User can use glob matching patterns to select targets. See
+<https://docs.rs/glob/latest/glob/struct.Pattern.html> for listing of accepted
+patterns. Be sure to quote targets to avoid the shell from expanding them.
+.RE
+.sp
+.SH EXAMPLES
+Assume that root, bash, and polyglot_ps1 have been defined as entries of
+the cluster such that polyglot_ps1 is a dependency of bash. Thus, the following
+will cause both bash and polyglot_ps1 to be deployed together:
+.sp
+.RS 4
+ocd deploy bash
+.RE
+.sp
+If we do not want polyglot_ps1 to be deployed with bash, then we can do this
+instead:
+.sp
+.RS 4
+ocd deploy -o bash
+.RE
+.sp
+Root is always deployed by default, but we can still request that its excluded
+files be deployed as well like so:
+.sp
+.RS 4
+ocd deploy -w root
+.RE
+.SH OCD
+Part of the \fBocd\fR(1) command-set.
