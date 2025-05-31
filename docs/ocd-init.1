@@ -1,0 +1,64 @@
+.TH OCD-INIT "1" "May 2025" "ocd 0.8.0" "User Commands"
+.SH NAME
+ocd-init \- Initialize new entries in cluster
+.SH SYNOPSIS
+ocd clone [options] <node_name>
+.SH DESCRIPTION
+Initialize new entries in cluster. This command expects a configuration file to
+be defined for a given entry beforehand, including root itself. The new entry
+in the repository store will be defined based on the provided configuration
+file. For any new cluster, root must always be defined first before any other
+node entry.
+.sp
+See \fBocd\fR(1) FILES section for more information about defining valid
+configuration files for both root and nodes of a cluster.
+.SH OPTIONS
+.PP
+\-h, \-\-help
+.RS 4
+Prints help message for this command.
+.RE
+.PP
+<node_name>
+.RS 4
+Name of entry to initialize.
+.RE
+.SH EXAMPLES
+.SS Initialize Root Entry
+Assume that the following root configuration file was defined beforehand:
+.sp
+.RS 4
+\fB$XDG_CONFIG_HOME/ocd/root.toml:\fR
+.br
+[settings]
+.br
+work_dir_alias = "config_dir"
+.br
+excluded = ["README*", "LICENSE*"]
+.RE
+.sp
+Now initialize the root repository:
+.sp
+.RS 4
+ocd init root
+.RE
+.SS Initialize Node Entry
+Assume that the following node configuration file was defined beforehand:
+.sp
+.RS 4
+\fB$XDG_CONFIG_HOME/ocd/nodes/vim.toml:\fR
+.br
+[settings]
+.br
+deployment = "bare_alias"
+.br
+url = "git@github.com:user/vim.git"
+.RE
+.sp
+Now we initialize, and check-in the configuration file to the new vim node:
+.sp
+.RS 4
+ocd init vim
+.RE
+.SH OCD
+Part of the \fBocd\fR(1) command-set.
