@@ -17,10 +17,7 @@ use crate::{
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use inquire::prompt_confirmation;
-use std::{
-    ffi::OsString,
-    fs::{remove_dir_all, remove_file},
-};
+use std::{ffi::OsString, fs::remove_dir_all};
 use tracing::{info, instrument, warn};
 
 /// OCD public command set CLI.
@@ -29,7 +26,7 @@ use tracing::{info, instrument, warn};
     about,
     override_usage = "\n  ocd [options] <ocd-command>\n  ocd [options] [target]... <git-command>",
     subcommand_help_heading = "Commands",
-    version,
+    version
 )]
 pub struct Ocd {
     #[arg(default_value_t = HookAction::default(), long, short, value_enum, value_name = "action")]
@@ -360,9 +357,7 @@ fn run_remove(run_hook: HookAction, mut opts: RemoveOptions) -> Result<()> {
     for target in &targets {
         let node = cluster.nodes.get(target).ok_or(anyhow!("Node {target:?} not defined"))?;
         let repo = Node::new_open(target, node)?;
-        repo.deploy(DeployAction::Undeploy)?;
-        remove_file(config_dir()?.join("nodes").join(format!("{target}.toml")))?;
-        remove_dir_all(repo.path())?;
+        repo.nuke()?;
     }
 
     hooks.run("rm", HookKind::Post, Some(&targets))?;
