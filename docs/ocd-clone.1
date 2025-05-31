@@ -1,0 +1,64 @@
+.TH OCD "1" "May 2025" "ocd 0.8.0" "User Commands"
+.SH NAME
+ocd-clone \- Clone existing cluster from root repository.
+.SH SYNOPSIS
+ocd clone [options] <url>
+.SH DESCRIPTION
+Clone existing cluster from a target root repository. This root repository will
+be cloned, and deployed to whatever target working directory alias that was
+issued by the root configuration file housed in the root repository. Afterward,
+all node entries apart of the cluster definition that was deployed from the
+root repository will also be cloned asynchronously.
+.sp
+The process of cloning node repositories displays a progress bar to show how
+far along the task is to completion. If any credential information is needed to
+perform the clone for any node (including the root itself), then all clone
+tasks will be blocked to await user input from either the terminal or some
+external authentication program.
+.sp
+Any failure for node cloning will not cancel other clone tasks in progress.
+Instead, all clone task failures will be reported \fBafter\fR all other clone
+tasks are finished. However, if root fails to clone properly, then both the
+configuration directory at \fB$XDG_CONFIG_HOME/ocd\fR, and the repository
+store at \fB$XDG_DATA_HOME/ocd\fR will be wiped out so the user can either
+retry the URL, or use a different URL without issue.
+.SH OPTIONS
+.PP
+\-j, \-\-jobs <limit>
+.RS 4
+Number of threads to use per node clone.
+.RE
+.sp
+.PP
+\-h, \-\-help
+.RS 4
+Print help message for this command.
+.RE
+.sp
+.PP
+<url>
+.RS 4
+The URL to clone root repository from. See \fBgit-clone\fR(1) section GIT URLS
+to learn about all different URL formats that OCD can accept.
+.RE
+.SH FILES
+.IP \[bu]
+Root repositories with a working directory alias pointing to OCD's configuration
+directory must have a \fBroot.toml\fR file at the top-level.
+.IP \[bu]
+Root repositories with a working directory alias pointing to the user's home
+directory must have a \fBroot.toml\fR file in the \fB.config/ocd\fR directory.
+.SH EXAMPLES
+Assume that https://github.com/user/root.git contains a cluster that we want to
+deploy onto the current machine. To setup this cluster, we just need to do the
+following:
+.sp
+.RS 4
+ocd clone https://github.com/user/root.git
+.RE
+.sp
+The clone command will handle the cloning of the root repository and any node
+entries, and deploy root itself in one shot. The machine will now have a new
+cluster to work with through just one command!
+.SH OCD
+Part of the \fBocd\fR(1) command-set.
