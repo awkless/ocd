@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
-use ocd::model::*;
+use ocd::model::{
+    cluster::{Cluster, DeploymentKind, NodeEntry, RootEntry, WorkDirAlias},
+    home_dir,
+};
 
 use anyhow::Result;
 use pretty_assertions::assert_eq as pretty_assert_eq;

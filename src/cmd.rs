@@ -7,9 +7,10 @@
 //! the OCD binary. The entire OCD command set is implemented right there!.
 
 use crate::{
-    glob_match,
     model::{
-        config_dir, data_dir, Cluster, HookAction, HookKind, HookRunner, NodeEntry, RootEntry,
+        cluster::{Cluster, NodeEntry, RootEntry},
+        config_dir, data_dir,
+        hook::{HookAction, HookKind, HookRunner},
     },
     store::{DeployAction, MultiNodeClone, Node, Root, TablizeCluster},
 };
@@ -236,36 +237,35 @@ pub fn run_init(action: HookAction, opts: InitOptions) -> Result<()> {
 }
 
 #[instrument(skip(opts), level = "debug")]
-pub fn run_deploy(run_hook: HookAction, mut opts: DeployOptions) -> Result<()> {
+pub fn run_deploy(run_hook: HookAction, opts: DeployOptions) -> Result<()> {
     let cluster = Cluster::new()?;
     let root = Root::new_open(&cluster.root)?;
     let action = if opts.with_excluded { DeployAction::DeployAll } else { DeployAction::Deploy };
 
+    let targets = cluster.match_targets(opts.patterns)?;
     let mut hooks = HookRunner::new()?;
     hooks.set_action(run_hook);
-
-    opts.patterns.dedup();
-    for pattern in &mut opts.patterns {
-        pattern.retain(|c| !c.is_whitespace());
-    }
-
-    if let Some(index) = opts.patterns.iter().position(|x| *x == "root") {
-        opts.patterns.swap_remove(index);
-        root.deploy(action)?;
-    }
-
-    let targets = glob_match(&opts.patterns, cluster.nodes.keys());
     hooks.run("deploy", HookKind::Pre, Some(&targets))?;
 
     let mut nodes = Vec::new();
     if opts.only {
         for target in &targets {
+            if target == "root" {
+                root.deploy(action)?;
+                continue;
+            }
+
             let entry = cluster.nodes.get(target).ok_or(anyhow!("Node {target:?} not defined"))?;
             let node = Node::new_open(target, entry)?;
             nodes.push(node);
         }
     } else {
         for target in &targets {
+            if target == "root" {
+                root.deploy(action)?;
+                continue;
+            }
+
             for (name, entry) in cluster.dependency_iter(target) {
                 let node = Node::new_open(name, entry)?;
                 nodes.push(node);
@@ -282,38 +282,36 @@ pub fn run_deploy(run_hook: HookAction, mut opts: DeployOptions) -> Result<()> {
     Ok(())
 }
 
-fn run_undeploy(run_hook: HookAction, mut opts: UndeployOptions) -> Result<()> {
+fn run_undeploy(run_hook: HookAction, opts: UndeployOptions) -> Result<()> {
     let cluster = Cluster::new()?;
     let root = Root::new_open(&cluster.root)?;
-
     let action =
         if opts.excluded_only { DeployAction::UndeployExcludes } else { DeployAction::Undeploy };
 
+    let targets = cluster.match_targets(opts.patterns)?;
     let mut hooks = HookRunner::new()?;
     hooks.set_action(run_hook);
-
-    opts.patterns.dedup();
-    for pattern in &mut opts.patterns {
-        pattern.retain(|c| !c.is_whitespace());
-    }
-
-    if let Some(index) = opts.patterns.iter().position(|x| *x == "root") {
-        opts.patterns.swap_remove(index);
-        root.deploy(action)?;
-    }
-
-    let targets = glob_match(&opts.patterns, cluster.nodes.keys());
     hooks.run("undeploy", HookKind::Pre, Some(&targets))?;
 
     let mut nodes = Vec::new();
     if opts.only {
         for target in &targets {
+            if target == "root" {
+                root.deploy(action)?;
+                continue;
+            }
+
             let entry = cluster.nodes.get(target).ok_or(anyhow!("Node {target:?} not defined"))?;
             let node = Node::new_open(target, entry)?;
             nodes.push(node);
         }
     } else {
         for target in &targets {
+            if target == "root" {
+                root.deploy(action)?;
+                continue;
+            }
+
             for (name, entry) in cluster.dependency_iter(target) {
                 let node = Node::new_open(name, entry)?;
                 nodes.push(node);
@@ -331,33 +329,25 @@ fn run_undeploy(run_hook: HookAction, mut opts: UndeployOptions) -> Result<()> {
 }
 
 #[instrument(skip(opts), level = "debug")]
-fn run_remove(run_hook: HookAction, mut opts: RemoveOptions) -> Result<()> {
+fn run_remove(run_hook: HookAction, opts: RemoveOptions) -> Result<()> {
     let cluster = Cluster::new()?;
+
+    let targets = cluster.match_targets(opts.patterns)?;
     let mut hooks = HookRunner::new()?;
     hooks.set_action(run_hook);
+    hooks.run("rm", HookKind::Pre, Some(&targets))?;
 
-    opts.patterns.dedup();
-    for pattern in &mut opts.patterns {
-        pattern.retain(|c| !c.is_whitespace());
-    }
-
-    if let Some(index) = opts.patterns.iter().position(|x| *x == "root") {
+    if targets.contains(&"root".into()) {
         warn!("Removing root will nuke your entire cluster");
         if prompt_confirmation("Do you want to send your cluster to the gallows? [y/n]")? {
             nuke_cluster(&cluster)?;
-            return Ok(());
-        } else {
-            opts.patterns.swap_remove(index);
         }
-    }
-
-    let targets = glob_match(&opts.patterns, cluster.nodes.keys());
-    hooks.run("rm", HookKind::Pre, Some(&targets))?;
-
-    for target in &targets {
-        let node = cluster.nodes.get(target).ok_or(anyhow!("Node {target:?} not defined"))?;
-        let repo = Node::new_open(target, node)?;
-        repo.nuke()?;
+    } else {
+        for target in &targets {
+            let node = cluster.nodes.get(target).ok_or(anyhow!("Node {target:?} not defined"))?;
+            let repo = Node::new_open(target, node)?;
+            repo.nuke()?;
+        }
     }
 
     hooks.run("rm", HookKind::Post, Some(&targets))?;
@@ -411,19 +401,17 @@ fn run_list(run_hook: HookAction, opts: ListOptions) -> Result<()> {
 
 fn run_git(opts: Vec<OsString>) -> Result<()> {
     let cluster = Cluster::new()?;
-    let mut patterns = opts[0].to_string_lossy().into_owned();
-    patterns.retain(|c| !c.is_whitespace());
-    let mut patterns: Vec<&str> = patterns.split(',').collect();
-    patterns.dedup();
+    let root = Root::new_open(&cluster.root)?;
+    let patterns = opts[0].to_string_lossy().into_owned();
+    let patterns: Vec<String> = patterns.split(',').map(Into::into).collect();
+    let targets = cluster.match_targets(patterns)?;
 
-    if let Some(index) = patterns.iter().position(|x| *x == "root") {
-        patterns.swap_remove(index);
-        let root = Root::new_open(&cluster.root)?;
-        root.gitcall(opts[1..].to_vec())?;
-    }
-
-    let targets = glob_match(patterns, cluster.nodes.keys());
     for target in &targets {
+        if target == "root" {
+            root.gitcall(opts[1..].to_vec())?;
+            continue;
+        }
+
         let node = cluster.nodes.get(target).ok_or(anyhow!("{target} not found"))?;
         let node = Node::new_open(target, node)?;
         node.gitcall(opts[1..].to_vec())?;

@@ -3,7 +3,10 @@
 
 use crate::{GitFixture, GitKind};
 
-use ocd::{model::*, store::*};
+use ocd::{
+    model::cluster::{Cluster, DeploymentKind, NodeEntry, RootEntry, WorkDirAlias},
+    store::{DeployAction, DeployState, Node, Root},
+};
 
 use anyhow::Result;
 use run_script::run_script;

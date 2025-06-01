@@ -10,9 +10,9 @@
 //! such that a top-down heirarchy is followed, with the cluster definition at the top and
 //! repository store at the bottom.
 
-use crate::{
-    glob_match,
-    model::{config_dir, data_dir, Cluster, DeploymentKind, NodeEntry, RootEntry, WorkDirAlias},
+use crate::model::{
+    cluster::{Cluster, DeploymentKind, NodeEntry, RootEntry, WorkDirAlias},
+    config_dir, data_dir, glob_match,
 };
 
 use anyhow::{anyhow, Context, Result};
