@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
+//! Hook configuration parser.
+//!
+//! Provides methods to parse, deserialize, and execute command hooks.
+
 use super::config_dir;
 
 use anyhow::{Context, Result};
@@ -23,6 +27,10 @@ use std::{
 use tracing::{debug, info, trace, warn};
 
 /// Execute user defined command hooks.
+///
+/// Command hooks are defined at `$XDG_CONFIG_HOME/ocd/hooks.toml` such that all hook scripts used
+/// for a hook entry are stored at `$XDG_CONFIG_HOME/ocd/hooks/`. This type will not look anywhere
+/// else for hook scripts.
 ///
 /// # Invariants
 ///

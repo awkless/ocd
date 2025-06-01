@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Jason Pena <jasonpena@awkless.com>
 // SPDX-License-Identifier: MIT
 
+//! Cluster definition parser.
+//!
+//! Provides methods to parse, deserialize, and manipulate the cluster definition.
+
 use super::{config_dir, glob_match, home_dir};
 
 use anyhow::{anyhow, Result};
@@ -97,6 +101,11 @@ impl Cluster {
         DependencyIter { graph: &self.nodes, visited: HashSet::new(), stack }
     }
 
+    /// Match list of targets to entries in cluster.
+    ///
+    /// # Errors
+    ///
+    /// May fail if targets do not match.
     pub fn match_targets(&self, mut targets: Vec<String>) -> Result<Vec<String>> {
         let mut results = Vec::new();
 
