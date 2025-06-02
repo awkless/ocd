@@ -5,6 +5,50 @@ SPDX-License-Identifier: MIT
 
 # Changelog
 
+## [0.8.0] - 2025-06-02
+
+### Added
+
+- Add man page entries for command-set.
+- Add `crate::cluster::Cluster::match_targets` to perform shell glob matching
+  on cluster entries.
+- Add `GitFixture` in test suite to make it easier to test `crate::store::Root`
+  and `crate::store::Node`.
+- Add binary deployment workflow to deploy release binaries of project through
+  GitHub actions.
+
+### Changed
+
+- Restructured cluster definition layout.
+   - Each entry of a cluster gets a separate configuration file entry.
+   - Root entry configuration is now in `$XDG_CONFIG_HOME/ocd/root.toml`.
+   - Node entry configurations are now in `$XDG_CONFIG_HOME/ocd/nodes/<name>.toml`
+   - OCD will not modify cluster definition data anymore.
+- Move cluster configuration logic from `crate::model` to `crate::model::cluster`.
+- Move command hook logic from `crate::model` to `crate::model::hook`.
+- Simplify repository management logic by refactoring `crate::store::Git` to
+  `crate::store::RepoEntry` with builder pattern.
+- Replace old configuration file management logic with `config` crate API.
+- Move integration test cases out into `tests/` directory.
+- Move website data, i.e., blog posts, usage guide, etc., from GitHub pages site
+  in `docs/` to personal self-hosted site at <https://www.awkless.com>.
+
+### Fixed
+
+- Fix broken URL links in API documentation.
+- Fix grammar in CLI text.
+- Fix bug where excluded files would not get undeployed properly with
+  `--excluded-only` flag for undeloy command.
+- Fix bug where initializing root fails, because default configuration uses an
+  empty working directory alias path.
+- Fix targeting feature of hook system for rm command.
+
+### Removed
+
+- Remove `fs` module, because of using `config` crate.
+- Remove error variant logic in favor of just using `anyhow` crate.
+- Remove format preservation logic in `crate::model::cluster::Cluster`.
+
 ## [0.7.0] - 2025-05-08
 
 ### Added
@@ -197,10 +241,12 @@ SPDX-License-Identifier: MIT
 - Add `CODE_OF_CONDUCT.md` file to provide basic code of conduct.
 - Add `CONTRIBUTING.md` file to provide basic contribution guidelines.
 - Add `README.md` file to introduce newcomers to project.
-- Add `.gitignore` file to ignore `target/*` directory.
+- Add `.gitignore` file to ignore `target/\*` directory.
 - Add CC0-1.0 license.
 - Add MIT license.
 
+[0.8.0]: https://github.com/awkless/ocd/tag/v0.8.0
+[0.7.0]: https://github.com/awkless/ocd/tag/v0.6.2
 [0.6.2]: https://github.com/awkless/ocd/tag/v0.6.2
 [0.6.1]: https://github.com/awkless/ocd/tag/v0.6.1
 [0.6.0]: https://github.com/awkless/ocd/tag/v0.6.0
