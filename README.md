@@ -19,8 +19,27 @@ dotfiles within a given repository apart of their cluster.
 Make sure you have the following pieces of software already installed _before_
 attempting to install OCD itself:
 
-- [Git][git-scm] [>= 2.30.0]
+- openssl [>= 0.10]
 - [Rust][rust-lang] [>= 2021 Edition]
+- [Git][git-scm] [>= 2.30.0]
+
+## Arch Linux
+
+Currently, OCD has been packaged to Arch Linux through the AUR. The following
+showcases how to use an AUR manager to get latest version OCD.
+
+```
+paru -S ocd
+```
+
+If you want the latest changes made to the project's Git repository, then
+do this instead:
+
+```
+paru -S ocd-git
+```
+
+## Cargo
 
 Through Cargo simply type the following into your terminal:
 
@@ -28,13 +47,11 @@ Through Cargo simply type the following into your terminal:
 cargo install ocd --locked
 ```
 
-Currently, there are no packaged version of OCD for major Linux distributions,
-but hopefully that will change as OCD becomes more mature. Finally, you can also
-directly build the project yourself by cloning and using Cargo.
+Do note that the man pages will not be included when using this method.
 
 ## Usage
 
-See [usage guide][ocd-usage].
+See the provided man pages, or view the online [usage guide][usage-guide].
 
 ## Acknowledgements
 
@@ -69,7 +86,7 @@ project, and can be distributed with the project under its main licenses.
 [archwiki-dotfiles]: https://wiki.archlinux.org/title/Dotfiles#Tracking_dotfiles_directly_with_Git
 [git-scm]: https://git-scm.com/downloads
 [rust-lang]: https://www.rust-lang.org/tools/install
-[ocd-usage]: https://www.awkless.com/ocd/usage
+[usage-guide]: https://www.awkless.com/posts/ocd-0.8.0-usage-guide/
 [contrib-guide]: ./CONTRIBUTING.md
 [linux-dco]: https://developercertificate.org/
 [reuse-3.3]: https://reuse.software/spec-3.3/
