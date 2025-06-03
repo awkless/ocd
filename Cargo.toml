@@ -43,6 +43,7 @@ glob = "0.3.2"
 indicatif = "0.17.11"
 inquire = "0.7.5"
 minus = { version = "5.6.1", features = [ "static_output", "search" ] }
+openssl = { version = "0.10.73", features = [ "vendored" ]}
 run_script = "0.11.0"
 serde = { version = "1.0.219", features = ["derive"] }
 shellexpand = "3.1.1"
